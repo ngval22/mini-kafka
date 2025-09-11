@@ -1,5 +1,8 @@
 add_library(mini_kafka
     version.cpp
+    crc32.cpp
+    record.cpp
+    log.cpp
 )
 
 target_include_directories(mini_kafka

@@ -11,6 +11,9 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(mini_kafka_tests
     version_test.cpp
+    crc32_test.cpp
+    record_test.cpp
+    log_test.cpp
 )
 
 target_link_libraries(mini_kafka_tests PRIVATE
