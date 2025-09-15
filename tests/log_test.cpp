@@ -52,7 +52,7 @@ TEST(LogTest, AppendThenReadInSameSession) {
     EXPECT_EQ(records[1], make_record("k2", "v2"));
 }
 
-TEST(LogTest, RestartSafeReads) {
+TEST(LogTest, CleanRestartSafeReads) {
     TempLogFile tmp;
     {
         mini_kafka::Log log(tmp.path());

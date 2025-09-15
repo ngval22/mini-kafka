@@ -1,6 +1,7 @@
 #include "mini_kafka/record.h"
 
 #include <istream>
+#include <limits>
 #include <ostream>
 #include <stdexcept>
 
@@ -18,6 +19,9 @@ bool operator!=(const Record& a, const Record& b) {
 
 namespace {
 
+constexpr uint32_t kMinRecordLength = 12u;
+constexpr uint32_t kMaxRecordLength = 16u * 1024u * 1024u;
+
 void append_u32_le(std::vector<uint8_t>& buf, uint32_t v) {
     buf.push_back(static_cast<uint8_t>(v & 0xFFu));
     buf.push_back(static_cast<uint8_t>((v >> 8) & 0xFFu));
@@ -33,12 +37,24 @@ uint32_t read_u32_le(const uint8_t* p) {
 }  // namespace
 
 void write_record(std::ostream& out, const Record& record) {
+    if (record.key.size() > std::numeric_limits<uint32_t>::max()) {
+        throw std::runtime_error("write_record: key too large");
+    }
+    if (record.value.size() > std::numeric_limits<uint32_t>::max()) {
+        throw std::runtime_error("write_record: value too large");
+    }
+
     const uint32_t key_size = static_cast<uint32_t>(record.key.size());
     const uint32_t value_size = static_cast<uint32_t>(record.value.size());
+    const std::size_t payload_size = 8u + static_cast<std::size_t>(key_size) +
+                                     static_cast<std::size_t>(value_size);
+    if (payload_size > kMaxRecordLength - 4u) {
+        throw std::runtime_error("write_record: record too large");
+    }
 
     // build the CRC-covered payload in memory so we can checksum it before writing.
     std::vector<uint8_t> payload;
-    payload.reserve(8 + key_size + value_size);
+    payload.reserve(payload_size);
     append_u32_le(payload, key_size);
     append_u32_le(payload, value_size);
     payload.insert(payload.end(), record.key.begin(), record.key.end());
@@ -70,9 +86,12 @@ std::optional<Record> read_record(std::istream& in) {
         throw std::runtime_error("read_record: truncated length field");
     }
     const uint32_t length = read_u32_le(length_bytes);
-    if (length < 12) {
+    if (length < kMinRecordLength) {
         // must contain at least: crc(4) + key_size(4) + value_size(4)
         throw std::runtime_error("read_record: length too small");
+    }
+    if (length > kMaxRecordLength) {
+        throw std::runtime_error("read_record: length too large");
     }
 
     uint8_t crc_bytes[4];

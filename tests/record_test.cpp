@@ -100,3 +100,15 @@ TEST(RecordTest, TruncatedHeaderThrows) {
     std::stringstream buf(only_two_bytes, std::ios::in | std::ios::out | std::ios::binary);
     EXPECT_THROW(mini_kafka::read_record(buf), std::runtime_error);
 }
+
+TEST(RecordTest, OversizedLengthThrows) {
+    constexpr uint32_t too_large = 16u * 1024u * 1024u + 1u;
+    std::string bytes;
+    bytes.push_back(static_cast<char>(too_large & 0xFFu));
+    bytes.push_back(static_cast<char>((too_large >> 8) & 0xFFu));
+    bytes.push_back(static_cast<char>((too_large >> 16) & 0xFFu));
+    bytes.push_back(static_cast<char>((too_large >> 24) & 0xFFu));
+
+    std::stringstream buf(bytes, std::ios::in | std::ios::out | std::ios::binary);
+    EXPECT_THROW(mini_kafka::read_record(buf), std::runtime_error);
+}
