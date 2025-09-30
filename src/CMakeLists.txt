@@ -4,6 +4,8 @@ add_library(mini_kafka
     record.cpp
     log.cpp
     protocol.cpp
+    socket_util.cpp
+    client.cpp
 )
 
 target_include_directories(mini_kafka
