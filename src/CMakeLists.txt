@@ -6,6 +6,7 @@ add_library(mini_kafka
     protocol.cpp
     socket_util.cpp
     client.cpp
+    broker.cpp
 )
 
 target_include_directories(mini_kafka

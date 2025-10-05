@@ -15,6 +15,7 @@ add_executable(mini_kafka_tests
     record_test.cpp
     log_test.cpp
     protocol_test.cpp
+    broker_client_test.cpp
 )
 
 target_link_libraries(mini_kafka_tests PRIVATE
