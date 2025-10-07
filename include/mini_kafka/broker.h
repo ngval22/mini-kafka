@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "mini_kafka/log.h"
@@ -24,10 +25,12 @@ public:
     void serve_n(std::size_t max_connections);
 
 private:
+    struct Impl;
+
     void serve_one();
 
     Log log_;
-    int listen_fd_;
+    std::unique_ptr<Impl> impl_;
     uint16_t port_;
 };
 

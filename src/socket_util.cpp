@@ -141,8 +141,7 @@ int connect_to_server(const std::string& host, uint16_t port) {
 void write_all(int fd, const uint8_t* data, std::size_t size) {
     std::size_t written = 0;
     while (written < size) {
-        const ssize_t rc =
-                ::send(fd, data + written, static_cast<int>(size - written), 0);
+        const ssize_t rc = ::send(fd, data + written, size - written, 0);
         if (rc < 0) {
             throw socket_error("send");
         }
@@ -153,8 +152,7 @@ void write_all(int fd, const uint8_t* data, std::size_t size) {
 void read_exact(int fd, uint8_t* data, std::size_t size) {
     std::size_t read_bytes = 0;
     while (read_bytes < size) {
-        const ssize_t rc =
-                ::recv(fd, data + read_bytes, static_cast<int>(size - read_bytes), 0);
+        const ssize_t rc = ::recv(fd, data + read_bytes, size - read_bytes, 0);
         if (rc == 0) {
             throw std::runtime_error("recv: connection closed");
         }
