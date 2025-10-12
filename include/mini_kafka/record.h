@@ -22,6 +22,12 @@ bool operator!=(const Record& a, const Record& b);
 //   uint32 value_size
 //   bytes  key      (key_size bytes)
 //   bytes  value    (value_size bytes)
+std::vector<uint8_t> encode_record(const Record& record);
+
+// Decodes one framed record at `offset`. Returns the index immediately after it.
+// Throws std::runtime_error on truncation or CRC mismatch.
+std::size_t decode_record_at(const std::vector<uint8_t>& bytes, std::size_t offset, Record& record);
+
 void write_record(std::ostream& out, const Record& record);
 
 // Returns std::nullopt at clean end-of-file.

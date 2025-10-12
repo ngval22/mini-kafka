@@ -1,7 +1,6 @@
 #include "mini_kafka/protocol.h"
 
 #include <limits>
-#include <sstream>
 #include <stdexcept>
 
 namespace mini_kafka {
@@ -15,33 +14,20 @@ void append_u32_le(std::vector<uint8_t>& buf, uint32_t value) {
     buf.push_back(static_cast<uint8_t>((value >> 24) & 0xFFu));
 }
 
-Record decode_single_record_payload(const std::vector<uint8_t>& payload, std::size_t offset) {
-    const auto begin = payload.begin() + static_cast<std::vector<uint8_t>::difference_type>(offset);
-    std::string bytes(begin, payload.end());
-    std::stringstream in(bytes, std::ios::in | std::ios::out | std::ios::binary);
-
-    auto record = read_record(in);
-    if (!record.has_value()) {
-        throw std::runtime_error("protocol: missing record");
-    }
-    if (read_record(in).has_value()) {
-        throw std::runtime_error("protocol: extra record data");
-    }
-    return *record;
-}
-
-void append_record_bytes(std::vector<uint8_t>& payload, const Record& record) {
-    std::stringstream out(std::ios::in | std::ios::out | std::ios::binary);
-    write_record(out, record);
-    const std::string bytes = out.str();
-    payload.insert(payload.end(), bytes.begin(), bytes.end());
-}
-
 uint8_t first_byte_or_throw(const std::vector<uint8_t>& payload, const char* what) {
     if (payload.empty()) {
         throw std::runtime_error(std::string("protocol: empty ") + what);
     }
     return payload[0];
+}
+
+Record decode_single_record_payload(const std::vector<uint8_t>& payload, std::size_t offset) {
+    Record record;
+    const std::size_t next_offset = decode_record_at(payload, offset, record);
+    if (next_offset != payload.size()) {
+        throw std::runtime_error("protocol: extra record data");
+    }
+    return record;
 }
 
 }  // namespace
@@ -61,7 +47,8 @@ std::vector<uint8_t> encode_frame(const std::vector<uint8_t>& payload) {
 std::vector<uint8_t> encode_produce_request(const Record& record) {
     std::vector<uint8_t> payload;
     payload.push_back(static_cast<uint8_t>(RequestType::Produce));
-    append_record_bytes(payload, record);
+    const std::vector<uint8_t> record_bytes = encode_record(record);
+    payload.insert(payload.end(), record_bytes.begin(), record_bytes.end());
     return payload;
 }
 
@@ -105,7 +92,8 @@ std::vector<uint8_t> encode_consume_response(const std::vector<Record>& records)
     std::vector<uint8_t> payload;
     payload.push_back(static_cast<uint8_t>(ResponseType::ConsumeRecords));
     for (const Record& record : records) {
-        append_record_bytes(payload, record);
+        const std::vector<uint8_t> record_bytes = encode_record(record);
+        payload.insert(payload.end(), record_bytes.begin(), record_bytes.end());
     }
     return payload;
 }
@@ -116,11 +104,12 @@ std::vector<Record> decode_consume_response(const std::vector<uint8_t>& payload)
         throw std::runtime_error("protocol: wrong response type for consume");
     }
 
-    std::string bytes(payload.begin() + 1, payload.end());
-    std::stringstream in(bytes, std::ios::in | std::ios::out | std::ios::binary);
     std::vector<Record> records;
-    while (auto record = read_record(in)) {
-        records.push_back(*record);
+    std::size_t offset = 1;
+    while (offset < payload.size()) {
+        Record record;
+        offset = decode_record_at(payload, offset, record);
+        records.push_back(std::move(record));
     }
     return records;
 }
