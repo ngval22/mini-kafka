@@ -2,6 +2,7 @@ add_library(mini_kafka
     version.cpp
     crc32.cpp
     record.cpp
+    topic.cpp
     log.cpp
     protocol.cpp
     socket_util.cpp

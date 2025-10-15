@@ -13,6 +13,7 @@ add_executable(mini_kafka_tests
     version_test.cpp
     crc32_test.cpp
     record_test.cpp
+    topic_test.cpp
     log_test.cpp
     protocol_test.cpp
     broker_client_test.cpp
