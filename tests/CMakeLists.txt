@@ -14,6 +14,7 @@ add_executable(mini_kafka_tests
     crc32_test.cpp
     record_test.cpp
     topic_test.cpp
+    partition_store_test.cpp
     log_test.cpp
     protocol_test.cpp
     broker_client_test.cpp

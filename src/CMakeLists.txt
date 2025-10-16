@@ -3,6 +3,7 @@ add_library(mini_kafka
     crc32.cpp
     record.cpp
     topic.cpp
+    partition_store.cpp
     log.cpp
     protocol.cpp
     socket_util.cpp
