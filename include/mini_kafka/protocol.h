@@ -19,13 +19,26 @@ enum class ResponseType : uint8_t {
     Error = 3,
 };
 
+struct ProduceRequest {
+    std::string topic;
+    Record record;
+};
+
+struct ConsumeRequest {
+    std::string topic;
+    std::uint32_t partition;
+};
+
 std::vector<uint8_t> encode_frame(const std::vector<uint8_t>& payload);
 
-std::vector<uint8_t> encode_produce_request(const Record& record);
-Record decode_produce_request(const std::vector<uint8_t>& payload);
+// Produce payload: [type][u32 topic_len][topic bytes][record bytes]
+// Partition is chosen by the broker from the record key.
+std::vector<uint8_t> encode_produce_request(const std::string& topic, const Record& record);
+ProduceRequest decode_produce_request(const std::vector<uint8_t>& payload);
 
-std::vector<uint8_t> encode_consume_request();
-void decode_consume_request(const std::vector<uint8_t>& payload);
+// Consume payload: [type][u32 topic_len][topic bytes][u32 partition]
+std::vector<uint8_t> encode_consume_request(const std::string& topic, std::uint32_t partition);
+ConsumeRequest decode_consume_request(const std::vector<uint8_t>& payload);
 
 std::vector<uint8_t> encode_produce_ok_response();
 void decode_produce_ok_response(const std::vector<uint8_t>& payload);

@@ -54,10 +54,10 @@ TEST(BrokerClientTest, ProduceThenConsumeOverTcp) {
         }
     });
 
-    mini_kafka::produce("127.0.0.1", broker.port(), make_record("k1", "v1"));
-    mini_kafka::produce("127.0.0.1", broker.port(), make_record("k2", "v2"));
+    mini_kafka::produce("127.0.0.1", broker.port(), "events", make_record("k1", "v1"));
+    mini_kafka::produce("127.0.0.1", broker.port(), "events", make_record("k2", "v2"));
     const std::vector<mini_kafka::Record> records =
-            mini_kafka::consume_all("127.0.0.1", broker.port());
+            mini_kafka::consume_all("127.0.0.1", broker.port(), "events", 0);
 
     server.join();
     if (server_error) {

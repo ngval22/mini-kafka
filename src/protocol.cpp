@@ -14,11 +14,40 @@ void append_u32_le(std::vector<uint8_t>& buf, uint32_t value) {
     buf.push_back(static_cast<uint8_t>((value >> 24) & 0xFFu));
 }
 
+uint32_t read_u32_le(const std::vector<uint8_t>& payload, std::size_t offset) {
+    if (offset + 4 > payload.size()) {
+        throw std::runtime_error("protocol: truncated u32");
+    }
+    const uint8_t* p = payload.data() + offset;
+    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
 uint8_t first_byte_or_throw(const std::vector<uint8_t>& payload, const char* what) {
     if (payload.empty()) {
         throw std::runtime_error(std::string("protocol: empty ") + what);
     }
     return payload[0];
+}
+
+void append_string(std::vector<uint8_t>& buf, const std::string& text) {
+    if (text.size() > std::numeric_limits<uint32_t>::max()) {
+        throw std::runtime_error("protocol: string too large");
+    }
+    append_u32_le(buf, static_cast<uint32_t>(text.size()));
+    buf.insert(buf.end(), text.begin(), text.end());
+}
+
+std::size_t decode_string_at(const std::vector<uint8_t>& payload, std::size_t offset,
+                               std::string& text) {
+    const uint32_t length = read_u32_le(payload, offset);
+    offset += 4;
+    if (offset + length > payload.size()) {
+        throw std::runtime_error("protocol: truncated string");
+    }
+    text.assign(payload.begin() + static_cast<std::ptrdiff_t>(offset),
+                payload.begin() + static_cast<std::ptrdiff_t>(offset + length));
+    return offset + length;
 }
 
 Record decode_single_record_payload(const std::vector<uint8_t>& payload, std::size_t offset) {
@@ -44,34 +73,48 @@ std::vector<uint8_t> encode_frame(const std::vector<uint8_t>& payload) {
     return frame;
 }
 
-std::vector<uint8_t> encode_produce_request(const Record& record) {
+std::vector<uint8_t> encode_produce_request(const std::string& topic, const Record& record) {
     std::vector<uint8_t> payload;
     payload.push_back(static_cast<uint8_t>(RequestType::Produce));
+    append_string(payload, topic);
     const std::vector<uint8_t> record_bytes = encode_record(record);
     payload.insert(payload.end(), record_bytes.begin(), record_bytes.end());
     return payload;
 }
 
-Record decode_produce_request(const std::vector<uint8_t>& payload) {
+ProduceRequest decode_produce_request(const std::vector<uint8_t>& payload) {
     if (first_byte_or_throw(payload, "produce request") !=
         static_cast<uint8_t>(RequestType::Produce)) {
         throw std::runtime_error("protocol: wrong request type for produce");
     }
-    return decode_single_record_payload(payload, 1);
+
+    ProduceRequest request;
+    const std::size_t record_offset = decode_string_at(payload, 1, request.topic);
+    request.record = decode_single_record_payload(payload, record_offset);
+    return request;
 }
 
-std::vector<uint8_t> encode_consume_request() {
-    return {static_cast<uint8_t>(RequestType::Consume)};
+std::vector<uint8_t> encode_consume_request(const std::string& topic, std::uint32_t partition) {
+    std::vector<uint8_t> payload;
+    payload.push_back(static_cast<uint8_t>(RequestType::Consume));
+    append_string(payload, topic);
+    append_u32_le(payload, partition);
+    return payload;
 }
 
-void decode_consume_request(const std::vector<uint8_t>& payload) {
+ConsumeRequest decode_consume_request(const std::vector<uint8_t>& payload) {
     if (first_byte_or_throw(payload, "consume request") !=
         static_cast<uint8_t>(RequestType::Consume)) {
         throw std::runtime_error("protocol: wrong request type for consume");
     }
-    if (payload.size() != 1) {
-        throw std::runtime_error("protocol: consume request should not include a body");
+
+    ConsumeRequest request;
+    std::size_t offset = decode_string_at(payload, 1, request.topic);
+    if (offset + 4 != payload.size()) {
+        throw std::runtime_error("protocol: consume request has unexpected trailing data");
     }
+    request.partition = read_u32_le(payload, offset);
+    return request;
 }
 
 std::vector<uint8_t> encode_produce_ok_response() {

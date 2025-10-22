@@ -18,19 +18,21 @@ void throw_if_error_response(const std::vector<uint8_t>& payload) {
 
 }  // namespace
 
-void produce(const std::string& host, uint16_t port, const Record& record) {
+void produce(const std::string& host, uint16_t port, const std::string& topic,
+             const Record& record) {
     SocketHandle socket(connect_to_server(host, port));
 
-    write_frame(socket.get(), encode_produce_request(record));
+    write_frame(socket.get(), encode_produce_request(topic, record));
     const std::vector<uint8_t> response = read_frame(socket.get());
     throw_if_error_response(response);
     decode_produce_ok_response(response);
 }
 
-std::vector<Record> consume_all(const std::string& host, uint16_t port) {
+std::vector<Record> consume_all(const std::string& host, uint16_t port, const std::string& topic,
+                                std::uint32_t partition) {
     SocketHandle socket(connect_to_server(host, port));
 
-    write_frame(socket.get(), encode_consume_request());
+    write_frame(socket.get(), encode_consume_request(topic, partition));
     const std::vector<uint8_t> response = read_frame(socket.get());
     throw_if_error_response(response);
     return decode_consume_response(response);

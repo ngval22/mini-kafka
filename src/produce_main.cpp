@@ -31,7 +31,8 @@ int main(int argc, char** argv) {
     }
 
     try {
-        mini_kafka::produce(argv[1], parse_port(argv[2]), make_record(argv[3], argv[4]));
+        mini_kafka::produce(argv[1], parse_port(argv[2]), "default",
+                            make_record(argv[3], argv[4]));
     } catch (const std::exception& ex) {
         std::cerr << ex.what() << "\n";
         return 1;

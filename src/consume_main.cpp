@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
 
     try {
         const std::vector<mini_kafka::Record> records =
-                mini_kafka::consume_all(argv[1], parse_port(argv[2]));
+                mini_kafka::consume_all(argv[1], parse_port(argv[2]), "default", 0);
         for (const mini_kafka::Record& record : records) {
             std::cout << to_string(record.key) << "\t" << to_string(record.value) << "\n";
         }

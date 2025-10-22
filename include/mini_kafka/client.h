@@ -8,7 +8,9 @@
 
 namespace mini_kafka {
 
-void produce(const std::string& host, uint16_t port, const Record& record);
-std::vector<Record> consume_all(const std::string& host, uint16_t port);
+void produce(const std::string& host, uint16_t port, const std::string& topic,
+             const Record& record);
+std::vector<Record> consume_all(const std::string& host, uint16_t port, const std::string& topic,
+                                std::uint32_t partition);
 
 }  // namespace mini_kafka

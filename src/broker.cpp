@@ -26,11 +26,15 @@ std::vector<uint8_t> handle_request(Log& log, const std::vector<uint8_t>& reques
 
     const uint8_t request_type = request[0];
     if (request_type == static_cast<uint8_t>(RequestType::Produce)) {
-        log.append(decode_produce_request(request));
+        const ProduceRequest produce = decode_produce_request(request);
+        (void)produce.topic;
+        log.append(produce.record);
         return encode_produce_ok_response();
     }
     if (request_type == static_cast<uint8_t>(RequestType::Consume)) {
-        decode_consume_request(request);
+        const ConsumeRequest consume = decode_consume_request(request);
+        (void)consume.topic;
+        (void)consume.partition;
         return encode_consume_response(log.read_all());
     }
     throw std::runtime_error("broker: unknown request type");

@@ -15,11 +15,20 @@ mini_kafka::Record make_record(const std::string& key, const std::string& value)
 
 }  // namespace
 
-TEST(ProtocolTest, ProduceRequestRoundTripsRecord) {
-    const mini_kafka::Record original = make_record("key", "value");
+TEST(ProtocolTest, ProduceRequestRoundTripsTopicAndRecord) {
+    const mini_kafka::Record record = make_record("key", "value");
 
-    const std::vector<uint8_t> payload = mini_kafka::encode_produce_request(original);
-    EXPECT_EQ(mini_kafka::decode_produce_request(payload), original);
+    const std::vector<uint8_t> payload = mini_kafka::encode_produce_request("events", record);
+    const mini_kafka::ProduceRequest decoded = mini_kafka::decode_produce_request(payload);
+    EXPECT_EQ(decoded.topic, "events");
+    EXPECT_EQ(decoded.record, record);
+}
+
+TEST(ProtocolTest, ConsumeRequestRoundTripsTopicAndPartition) {
+    const std::vector<uint8_t> payload = mini_kafka::encode_consume_request("events", 2);
+    const mini_kafka::ConsumeRequest decoded = mini_kafka::decode_consume_request(payload);
+    EXPECT_EQ(decoded.topic, "events");
+    EXPECT_EQ(decoded.partition, 2u);
 }
 
 TEST(ProtocolTest, ConsumeResponseRoundTripsRecords) {
