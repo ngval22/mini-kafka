@@ -19,7 +19,7 @@ uint16_t parse_port(const char* text) {
 
 int main(int argc, char** argv) {
     if (argc != 3) {
-        std::cerr << "usage: mini_kafka_broker <log_path> <port>\n";
+        std::cerr << "usage: mini_kafka_broker <data_dir> <port>\n";
         return 1;
     }
 

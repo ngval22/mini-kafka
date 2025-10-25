@@ -4,13 +4,14 @@
 #include <cstdint>
 #include <string>
 
-#include "mini_kafka/log.h"
+#include "mini_kafka/partition_store.h"
+#include "mini_kafka/topic.h"
 
 namespace mini_kafka {
 
 class Broker {
 public:
-    Broker(std::string log_path, uint16_t port);
+    Broker(std::string data_dir, uint16_t port);
     ~Broker();
 
     Broker(const Broker&) = delete;
@@ -19,6 +20,7 @@ public:
     Broker& operator=(Broker&&) = delete;
 
     uint16_t port() const;
+    void add_topic(TopicMetadata topic);
 
     void serve_forever();
     void serve_n(std::size_t max_connections);
@@ -26,7 +28,7 @@ public:
 private:
     void serve_one();
 
-    Log log_;
+    PartitionLogStore store_;
     int listen_fd_;
     uint16_t port_;
 };
