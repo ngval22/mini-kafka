@@ -25,14 +25,14 @@ mini_kafka::Record make_record(const std::string& key, const std::string& value)
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 5) {
-        std::cerr << "usage: mini_kafka_produce <host> <port> <key> <value>\n";
+    if (argc != 6) {
+        std::cerr << "usage: mini_kafka_produce <host> <port> <topic> <key> <value>\n";
         return 1;
     }
 
     try {
-        mini_kafka::produce(argv[1], parse_port(argv[2]), "default",
-                            make_record(argv[3], argv[4]));
+        mini_kafka::produce(argv[1], parse_port(argv[2]), argv[3],
+                            make_record(argv[4], argv[5]));
     } catch (const std::exception& ex) {
         std::cerr << ex.what() << "\n";
         return 1;
