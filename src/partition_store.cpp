@@ -27,9 +27,9 @@ const TopicRegistry& PartitionLogStore::topics() const {
     return topics_;
 }
 
-std::string PartitionLogStore::partition_path(const std::string& topic,
-                                              std::uint32_t partition) const {
-    return base_dir_ + "/" + topic + "-p" + std::to_string(partition) + ".bin";
+std::string PartitionLogStore::partition_dir(const std::string& topic,
+                                             std::uint32_t partition) const {
+    return base_dir_ + "/" + topic + "-p" + std::to_string(partition);
 }
 
 const TopicMetadata& PartitionLogStore::metadata_for(const std::string& topic) const {
@@ -48,18 +48,17 @@ void PartitionLogStore::validate_partition(const TopicMetadata& topic,
     }
 }
 
-Log& PartitionLogStore::open_log(const std::string& topic, std::uint32_t partition) {
+SegmentedLog& PartitionLogStore::open_log(const std::string& topic, std::uint32_t partition) {
     const TopicMetadata& meta = metadata_for(topic);
     validate_partition(meta, partition);
 
-    const std::string path = partition_path(topic, partition);
-    const auto it = open_logs_.find(path);
+    const std::string dir = partition_dir(topic, partition);
+    const auto it = open_logs_.find(dir);
     if (it != open_logs_.end()) {
         return *it->second;
     }
 
-    const auto inserted =
-            open_logs_.emplace(path, std::make_unique<Log>(path));
+    const auto inserted = open_logs_.emplace(dir, std::make_unique<SegmentedLog>(dir));
     return *inserted.first->second;
 }
 
@@ -78,7 +77,7 @@ std::vector<Record> PartitionLogStore::read_all(const std::string& topic,
                                                 std::uint32_t partition) const {
     const TopicMetadata& meta = metadata_for(topic);
     validate_partition(meta, partition);
-    return Log(partition_path(topic, partition)).read_all();
+    return SegmentedLog(partition_dir(topic, partition)).read_all();
 }
 
 }  // namespace mini_kafka

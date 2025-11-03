@@ -5,6 +5,7 @@ add_library(mini_kafka
     topic.cpp
     partition_store.cpp
     log.cpp
+    segmented_log.cpp
     protocol.cpp
     socket_util.cpp
     client.cpp

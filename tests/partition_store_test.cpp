@@ -92,8 +92,8 @@ TEST(PartitionStoreTest, RejectsUnknownTopicOrPartition) {
     EXPECT_THROW(store.read_all("events", 2), std::runtime_error);
 }
 
-TEST(PartitionStoreTest, PartitionPathsFollowConvention) {
+TEST(PartitionStoreTest, PartitionDirsFollowConvention) {
     TempLogDir tmp;
     mini_kafka::PartitionLogStore store(tmp.path());
-    EXPECT_EQ(store.partition_path("events", 3), tmp.path() + "/events-p3.bin");
+    EXPECT_EQ(store.partition_dir("events", 3), tmp.path() + "/events-p3");
 }
