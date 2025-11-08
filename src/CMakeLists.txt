@@ -6,6 +6,7 @@ add_library(mini_kafka
     partition_store.cpp
     log.cpp
     segmented_log.cpp
+    sparse_index.cpp
     protocol.cpp
     socket_util.cpp
     client.cpp

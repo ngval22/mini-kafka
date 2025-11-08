@@ -14,6 +14,7 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr char kSegmentSuffix[] = ".seg";
+constexpr char kIndexFileName[] = "sparse.idx";
 
 std::vector<Record> read_segment_file(const std::string& path) {
     std::ifstream in(path, std::ios::in | std::ios::binary);
@@ -35,11 +36,29 @@ std::uint64_t parse_base_offset(const fs::path& path) {
     return std::stoull(stem);
 }
 
+std::uint64_t count_records_from_position(const std::string& segment_path,
+                                         const std::uint64_t byte_position,
+                                         const std::uint64_t start_offset) {
+    std::ifstream in(segment_path, std::ios::in | std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("segmented_log: failed to open segment for scan: " + segment_path);
+    }
+    in.seekg(static_cast<std::streamoff>(byte_position), std::ios::beg);
+
+    std::uint64_t offset = start_offset;
+    while (read_record(in)) {
+        ++offset;
+    }
+    return offset;
+}
+
 }  // namespace
 
-SegmentedLog::SegmentedLog(std::string dir_path, std::size_t max_segment_bytes)
+SegmentedLog::SegmentedLog(std::string dir_path, const std::size_t max_segment_bytes,
+                           const std::uint32_t index_interval)
         : dir_path_(std::move(dir_path)),
           max_segment_bytes_(max_segment_bytes),
+          index_(index_path(), index_interval),
           next_offset_(0),
           active_base_offset_(0) {
     if (dir_path_.empty()) {
@@ -78,8 +97,20 @@ std::size_t SegmentedLog::max_segment_bytes() const {
     return max_segment_bytes_;
 }
 
+std::uint32_t SegmentedLog::index_interval() const {
+    return index_.index_interval();
+}
+
 std::size_t SegmentedLog::segment_file_count() const {
     return list_segment_base_offsets().size();
+}
+
+std::optional<IndexEntry> SegmentedLog::index_lookup(const std::uint64_t offset) const {
+    return index_.lookup(offset);
+}
+
+std::string SegmentedLog::index_path() const {
+    return dir_path_ + "/" + kIndexFileName;
 }
 
 std::string SegmentedLog::segment_path(const std::uint64_t base_offset) const {
@@ -110,7 +141,7 @@ std::vector<std::uint64_t> SegmentedLog::list_segment_base_offsets() const {
     return bases;
 }
 
-std::uint64_t SegmentedLog::compute_next_offset() const {
+std::uint64_t SegmentedLog::compute_next_offset_full_scan() const {
     std::uint64_t expected_base = 0;
     for (const std::uint64_t base : list_segment_base_offsets()) {
         if (base != expected_base) {
@@ -121,6 +152,36 @@ std::uint64_t SegmentedLog::compute_next_offset() const {
         expected_base += records.size();
     }
     return expected_base;
+}
+
+std::uint64_t SegmentedLog::scan_tail_from_index(const IndexEntry& entry) const {
+    std::uint64_t offset = count_records_from_position(segment_path(entry.segment_base_offset),
+                                                       entry.byte_position, entry.offset);
+
+    for (const std::uint64_t base : list_segment_base_offsets()) {
+        if (base <= entry.segment_base_offset) {
+            continue;
+        }
+        if (base != offset) {
+            throw std::runtime_error("segmented_log: missing segment at offset " +
+                                     std::to_string(offset));
+        }
+        const std::vector<Record> records = read_segment_file(segment_path(base));
+        offset += records.size();
+    }
+    return offset;
+}
+
+std::uint64_t SegmentedLog::compute_next_offset() const {
+    if (index_.entries().empty()) {
+        return compute_next_offset_full_scan();
+    }
+    return scan_tail_from_index(index_.entries().back());
+}
+
+void SegmentedLog::maybe_index(const std::uint64_t offset, const std::uint64_t segment_base_offset,
+                               const std::uint64_t byte_position) {
+    index_.append_entry(offset, segment_base_offset, byte_position);
 }
 
 void SegmentedLog::open_active_segment(const std::uint64_t base_offset) {
@@ -141,6 +202,7 @@ void SegmentedLog::roll_segment() {
         active_out_.close();
     }
     open_active_segment(next_offset_);
+    maybe_index(next_offset_, active_base_offset_, 0);
 }
 
 std::size_t SegmentedLog::active_segment_size() const {
@@ -160,6 +222,12 @@ void SegmentedLog::append(const Record& record) {
     if (active_segment_size() > 0 &&
         active_segment_size() + encoded.size() > max_segment_bytes_) {
         roll_segment();
+    }
+
+    const std::uint64_t offset = next_offset_;
+    const std::uint64_t byte_position = active_segment_size();
+    if (offset % index_.index_interval() == 0) {
+        maybe_index(offset, active_base_offset_, byte_position);
     }
 
     write_record(active_out_, record);

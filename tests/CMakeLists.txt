@@ -17,6 +17,7 @@ add_executable(mini_kafka_tests
     partition_store_test.cpp
     log_test.cpp
     segmented_log_test.cpp
+    sparse_index_test.cpp
     protocol_test.cpp
     broker_client_test.cpp
 )
