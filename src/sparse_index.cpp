@@ -94,6 +94,32 @@ void SparseIndex::load_from_disk() {
     }
 }
 
+void SparseIndex::write_all_to_disk() const {
+    std::ofstream out(path_, std::ios::out | std::ios::trunc | std::ios::binary);
+    if (!out) {
+        throw std::runtime_error("sparse_index: failed to open index for write: " + path_);
+    }
+    for (const IndexEntry& entry : entries_) {
+        const std::vector<uint8_t> encoded = encode_entry(entry);
+        out.write(reinterpret_cast<const char*>(encoded.data()),
+                  static_cast<std::streamsize>(encoded.size()));
+    }
+    out.flush();
+    if (!out) {
+        throw std::runtime_error("sparse_index: failed to write index: " + path_);
+    }
+}
+
+void SparseIndex::replace_all(std::vector<IndexEntry> entries) {
+    for (std::size_t i = 1; i < entries.size(); ++i) {
+        if (entries[i].offset <= entries[i - 1].offset) {
+            throw std::runtime_error("sparse_index: entries must be strictly increasing");
+        }
+    }
+    entries_ = std::move(entries);
+    write_all_to_disk();
+}
+
 void SparseIndex::append_entry(const std::uint64_t offset, const std::uint64_t segment_base_offset,
                                const std::uint64_t byte_position) {
     if (!entries_.empty() && entries_.back().offset >= offset) {

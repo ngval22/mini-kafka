@@ -52,6 +52,38 @@ std::uint64_t count_records_from_position(const std::string& segment_path,
     return offset;
 }
 
+std::size_t valid_byte_length(const std::string& path) {
+    std::ifstream in(path, std::ios::in | std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("segmented_log: failed to open segment for recovery: " + path);
+    }
+
+    std::size_t valid_end = 0;
+    while (in) {
+        const std::size_t record_start = static_cast<std::size_t>(in.tellg());
+        try {
+            const std::optional<Record> record = read_record(in);
+            if (!record) {
+                valid_end = record_start;
+                break;
+            }
+            valid_end = static_cast<std::size_t>(in.tellg());
+        } catch (const std::exception&) {
+            valid_end = record_start;
+            break;
+        }
+    }
+    return valid_end;
+}
+
+void truncate_file(const std::string& path, const std::size_t size) {
+    std::error_code ec;
+    fs::resize_file(path, size, ec);
+    if (ec) {
+        throw std::runtime_error("segmented_log: failed to truncate segment: " + path);
+    }
+}
+
 }  // namespace
 
 SegmentedLog::SegmentedLog(std::string dir_path, const std::size_t max_segment_bytes,
@@ -80,6 +112,7 @@ SegmentedLog::SegmentedLog(std::string dir_path, const std::size_t max_segment_b
         return;
     }
 
+    recover_on_startup();
     next_offset_ = compute_next_offset();
     active_base_offset_ = bases.back();
     open_active_segment(active_base_offset_);
@@ -182,6 +215,56 @@ std::uint64_t SegmentedLog::compute_next_offset() const {
 void SegmentedLog::maybe_index(const std::uint64_t offset, const std::uint64_t segment_base_offset,
                                const std::uint64_t byte_position) {
     index_.append_entry(offset, segment_base_offset, byte_position);
+}
+
+void SegmentedLog::recover_on_startup() {
+    const std::vector<std::uint64_t> bases = list_segment_base_offsets();
+    if (bases.empty()) {
+        return;
+    }
+
+    const std::string last_segment = segment_path(bases.back());
+    const std::size_t valid_size = valid_byte_length(last_segment);
+    truncate_file(last_segment, valid_size);
+
+    index_.replace_all(build_index_entries());
+}
+
+std::vector<IndexEntry> SegmentedLog::build_index_entries() const {
+    std::vector<IndexEntry> entries;
+    std::uint64_t offset = 0;
+
+    for (const std::uint64_t base : list_segment_base_offsets()) {
+        if (base != offset) {
+            throw std::runtime_error("segmented_log: missing segment at offset " +
+                                     std::to_string(offset));
+        }
+
+        std::ifstream in(segment_path(base), std::ios::in | std::ios::binary);
+        if (!in) {
+            throw std::runtime_error("segmented_log: failed to open segment for index rebuild: " +
+                                     segment_path(base));
+        }
+
+        while (in) {
+            const std::uint64_t byte_position = static_cast<std::uint64_t>(in.tellg());
+            if (offset % index_.index_interval() == 0) {
+                entries.push_back(IndexEntry{offset, base, byte_position});
+            }
+
+            try {
+                const std::optional<Record> record = read_record(in);
+                if (!record) {
+                    break;
+                }
+                ++offset;
+            } catch (const std::exception&) {
+                break;
+            }
+        }
+    }
+
+    return entries;
 }
 
 void SegmentedLog::open_active_segment(const std::uint64_t base_offset) {

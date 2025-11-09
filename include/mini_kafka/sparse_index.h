@@ -28,11 +28,15 @@ public:
     void append_entry(std::uint64_t offset, std::uint64_t segment_base_offset,
                       std::uint64_t byte_position);
 
+    // Replaces on-disk index with exactly these entries (used after recovery).
+    void replace_all(std::vector<IndexEntry> entries);
+
     // Largest indexed offset <= query, or nullopt if query is before the first entry.
     std::optional<IndexEntry> lookup(std::uint64_t offset) const;
 
 private:
     void load_from_disk();
+    void write_all_to_disk() const;
 
     std::string path_;
     std::uint32_t index_interval_;

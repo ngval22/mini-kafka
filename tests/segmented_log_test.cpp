@@ -38,6 +38,20 @@ mini_kafka::Record make_record(const std::string& key, const std::string& value)
     return record;
 }
 
+void append_bytes_to_last_segment(const std::string& dir, const std::string& bytes) {
+    std::string last_segment;
+    for (const fs::directory_entry& entry : fs::directory_iterator(dir)) {
+        if (entry.path().extension() == ".seg") {
+            last_segment = entry.path().string();
+        }
+    }
+    ASSERT_FALSE(last_segment.empty());
+
+    std::ofstream out(last_segment, std::ios::out | std::ios::app | std::ios::binary);
+    ASSERT_TRUE(out);
+    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+}
+
 }  // namespace
 
 TEST(SegmentedLogTest, EmptyLogReadsEmpty) {
@@ -116,6 +130,49 @@ TEST(SegmentedLogTest, RestartUsesIndexForNextOffset) {
     const std::vector<mini_kafka::Record> records = log.read_all();
     ASSERT_EQ(records.size(), 5u);
     EXPECT_EQ(records[4], make_record("e", "5"));
+}
+
+TEST(SegmentedLogTest, TruncatesPartialTailOnStartup) {
+    TempLogDir tmp;
+    {
+        mini_kafka::SegmentedLog log(tmp.path(), 1024, 4);
+        log.append(make_record("a", "1"));
+        log.append(make_record("b", "2"));
+        log.append(make_record("c", "3"));
+    }
+
+    append_bytes_to_last_segment(tmp.path(), "partial-write-garbage");
+
+    mini_kafka::SegmentedLog log(tmp.path(), 1024, 4);
+    const std::vector<mini_kafka::Record> recovered = log.read_all();
+    ASSERT_EQ(recovered.size(), 3u);
+    EXPECT_EQ(recovered[2], make_record("c", "3"));
+
+    log.append(make_record("d", "4"));
+    const std::vector<mini_kafka::Record> all = log.read_all();
+    ASSERT_EQ(all.size(), 4u);
+    EXPECT_EQ(all[3], make_record("d", "4"));
+}
+
+TEST(SegmentedLogTest, RebuildsIndexAfterTailTruncation) {
+    TempLogDir tmp;
+    constexpr std::uint32_t kIndexInterval = 2;
+
+    {
+        mini_kafka::SegmentedLog log(tmp.path(), 1024, kIndexInterval);
+        log.append(make_record("a", "1"));
+        log.append(make_record("b", "2"));
+        log.append(make_record("c", "3"));
+    }
+
+    append_bytes_to_last_segment(tmp.path(), "corrupt");
+
+    mini_kafka::SegmentedLog log(tmp.path(), 1024, kIndexInterval);
+    ASSERT_TRUE(log.index_lookup(2).has_value());
+    EXPECT_EQ(log.index_lookup(2)->offset, 2u);
+
+    log.append(make_record("d", "4"));
+    EXPECT_EQ(log.read_all().size(), 4u);
 }
 
 TEST(SegmentedLogTest, CleanRestartSafeReadsAcrossSegments) {

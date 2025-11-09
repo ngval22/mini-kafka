@@ -43,6 +43,8 @@ private:
     std::uint64_t scan_tail_from_index(const IndexEntry& entry) const;
     void maybe_index(std::uint64_t offset, std::uint64_t segment_base_offset,
                      std::uint64_t byte_position);
+    void recover_on_startup();
+    std::vector<IndexEntry> build_index_entries() const;
     void open_active_segment(std::uint64_t base_offset);
     void roll_segment();
     std::size_t active_segment_size() const;
