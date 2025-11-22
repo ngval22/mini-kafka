@@ -4,6 +4,7 @@ add_library(mini_kafka
     record.cpp
     topic.cpp
     partition_store.cpp
+    flush_policy.cpp
     log.cpp
     segmented_log.cpp
     sparse_index.cpp

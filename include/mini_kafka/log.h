@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "mini_kafka/flush_policy.h"
 #include "mini_kafka/record.h"
 
 namespace mini_kafka {
@@ -14,7 +15,7 @@ namespace mini_kafka {
 // same records.
 class Log {
 public:
-    explicit Log(std::string path);
+    explicit Log(std::string path, FlushPolicy flush_policy = FlushPolicy::Flush);
 
     Log(const Log&) = delete;
     Log& operator=(const Log&) = delete;
@@ -24,8 +25,11 @@ public:
     void append(const Record& record);
     std::vector<Record> read_all() const;
 
+    FlushPolicy flush_policy() const;
+
 private:
     std::string path_;
+    FlushPolicy flush_policy_;
     std::ofstream out_;
 };
 

@@ -15,6 +15,7 @@ add_executable(mini_kafka_tests
     record_test.cpp
     topic_test.cpp
     partition_store_test.cpp
+    flush_policy_test.cpp
     log_test.cpp
     segmented_log_test.cpp
     sparse_index_test.cpp

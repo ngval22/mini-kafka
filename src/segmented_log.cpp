@@ -87,9 +87,10 @@ void truncate_file(const std::string& path, const std::size_t size) {
 }  // namespace
 
 SegmentedLog::SegmentedLog(std::string dir_path, const std::size_t max_segment_bytes,
-                           const std::uint32_t index_interval)
+                           const std::uint32_t index_interval, const FlushPolicy flush_policy)
         : dir_path_(std::move(dir_path)),
           max_segment_bytes_(max_segment_bytes),
+          flush_policy_(flush_policy),
           index_(index_path(), index_interval),
           next_offset_(0),
           active_base_offset_(0) {
@@ -132,6 +133,10 @@ std::size_t SegmentedLog::max_segment_bytes() const {
 
 std::uint32_t SegmentedLog::index_interval() const {
     return index_.index_interval();
+}
+
+FlushPolicy SegmentedLog::flush_policy() const {
+    return flush_policy_;
 }
 
 std::size_t SegmentedLog::segment_file_count() const {
@@ -314,11 +319,11 @@ void SegmentedLog::append(const Record& record) {
     }
 
     write_record(active_out_, record);
-    active_out_.flush();
     if (!active_out_) {
         throw std::runtime_error("segmented_log: write failed for: " +
                                  segment_path(active_base_offset_));
     }
+    apply_flush_policy(active_out_, segment_path(active_base_offset_), flush_policy_);
     ++next_offset_;
 }
 

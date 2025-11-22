@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "mini_kafka/flush_policy.h"
 #include "mini_kafka/record.h"
 #include "mini_kafka/sparse_index.h"
 
@@ -18,7 +19,8 @@ namespace mini_kafka {
 class SegmentedLog {
 public:
     explicit SegmentedLog(std::string dir_path, std::size_t max_segment_bytes = 1024 * 1024,
-                            std::uint32_t index_interval = 4);
+                          std::uint32_t index_interval = 4,
+                          FlushPolicy flush_policy = FlushPolicy::Flush);
 
     SegmentedLog(const SegmentedLog&) = delete;
     SegmentedLog& operator=(const SegmentedLog&) = delete;
@@ -33,6 +35,8 @@ public:
     std::uint32_t index_interval() const;
     std::size_t segment_file_count() const;
     std::optional<IndexEntry> index_lookup(std::uint64_t offset) const;
+
+    FlushPolicy flush_policy() const;
 
 private:
     std::string segment_path(std::uint64_t base_offset) const;
@@ -51,6 +55,7 @@ private:
 
     std::string dir_path_;
     std::size_t max_segment_bytes_;
+    FlushPolicy flush_policy_;
     SparseIndex index_;
     std::uint64_t next_offset_;
     std::uint64_t active_base_offset_;
