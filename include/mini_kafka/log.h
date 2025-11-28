@@ -10,9 +10,9 @@
 namespace mini_kafka {
 
 // Single append-only log backed by one file on disk.
-// Clean-restart-safe: after this Log is destroyed (flushes on close),
-// constructing a new Log on the same path and calling read_all() yields the
-// same records.
+// On open, truncates any partial or corrupt record tail left by a crash.
+// Clean-restart-safe: constructing a new Log on the same path and calling
+// read_all() yields the same complete records that were fully written.
 class Log {
 public:
     explicit Log(std::string path, FlushPolicy flush_policy = FlushPolicy::Flush);

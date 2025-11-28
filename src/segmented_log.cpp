@@ -1,5 +1,7 @@
 #include "mini_kafka/segmented_log.h"
 
+#include "mini_kafka/log_file_recovery.h"
+
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -50,38 +52,6 @@ std::uint64_t count_records_from_position(const std::string& segment_path,
         ++offset;
     }
     return offset;
-}
-
-std::size_t valid_byte_length(const std::string& path) {
-    std::ifstream in(path, std::ios::in | std::ios::binary);
-    if (!in) {
-        throw std::runtime_error("segmented_log: failed to open segment for recovery: " + path);
-    }
-
-    std::size_t valid_end = 0;
-    while (in) {
-        const std::size_t record_start = static_cast<std::size_t>(in.tellg());
-        try {
-            const std::optional<Record> record = read_record(in);
-            if (!record) {
-                valid_end = record_start;
-                break;
-            }
-            valid_end = static_cast<std::size_t>(in.tellg());
-        } catch (const std::exception&) {
-            valid_end = record_start;
-            break;
-        }
-    }
-    return valid_end;
-}
-
-void truncate_file(const std::string& path, const std::size_t size) {
-    std::error_code ec;
-    fs::resize_file(path, size, ec);
-    if (ec) {
-        throw std::runtime_error("segmented_log: failed to truncate segment: " + path);
-    }
 }
 
 }  // namespace
@@ -229,8 +199,8 @@ void SegmentedLog::recover_on_startup() {
     }
 
     const std::string last_segment = segment_path(bases.back());
-    const std::size_t valid_size = valid_byte_length(last_segment);
-    truncate_file(last_segment, valid_size);
+    const std::size_t valid_size = valid_record_byte_length(last_segment);
+    truncate_log_file(last_segment, valid_size);
 
     index_.replace_all(build_index_entries());
 }

@@ -1,12 +1,28 @@
 #include "mini_kafka/log.h"
 
+#include "mini_kafka/log_file_recovery.h"
+
+#include <filesystem>
 #include <stdexcept>
 #include <utility>
 
 namespace mini_kafka {
 
+namespace fs = std::filesystem;
+
 Log::Log(std::string path, const FlushPolicy flush_policy)
         : path_(std::move(path)), flush_policy_(flush_policy) {
+    if (fs::exists(path_)) {
+        std::error_code ec;
+        const std::size_t file_size = fs::file_size(path_, ec);
+        if (!ec && file_size > 0) {
+            const std::size_t valid_size = valid_record_byte_length(path_);
+            if (valid_size < file_size) {
+                truncate_log_file(path_, valid_size);
+            }
+        }
+    }
+
     out_.open(path_, std::ios::out | std::ios::app | std::ios::binary);
     if (!out_) {
         throw std::runtime_error("Log: failed to open file for append: " + path_);
