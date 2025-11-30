@@ -23,7 +23,7 @@ public:
 
     void append(const std::string& topic, std::uint32_t partition, const Record& record);
     void append_by_key(const std::string& topic, const Record& record);
-    std::vector<Record> read_all(const std::string& topic, std::uint32_t partition) const;
+    std::vector<Record> read_all(const std::string& topic, std::uint32_t partition);
 
     std::string partition_dir(const std::string& topic, std::uint32_t partition) const;
 

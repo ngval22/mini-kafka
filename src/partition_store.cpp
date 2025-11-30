@@ -74,10 +74,8 @@ void PartitionLogStore::append_by_key(const std::string& topic, const Record& re
 }
 
 std::vector<Record> PartitionLogStore::read_all(const std::string& topic,
-                                                std::uint32_t partition) const {
-    const TopicMetadata& meta = metadata_for(topic);
-    validate_partition(meta, partition);
-    return SegmentedLog(partition_dir(topic, partition)).read_all();
+                                                std::uint32_t partition) {
+    return open_log(topic, partition).read_all();
 }
 
 }  // namespace mini_kafka
