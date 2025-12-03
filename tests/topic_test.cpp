@@ -16,6 +16,8 @@ std::vector<uint8_t> to_bytes(const std::string& text) {
 TEST(TopicTest, MakeTopicMetadataRejectsInvalidInput) {
     EXPECT_THROW(mini_kafka::make_topic_metadata("", 1), std::runtime_error);
     EXPECT_THROW(mini_kafka::make_topic_metadata("events", 0), std::runtime_error);
+    EXPECT_THROW(mini_kafka::make_topic_metadata("events/evil", 1), std::runtime_error);
+    EXPECT_THROW(mini_kafka::make_topic_metadata("..", 1), std::runtime_error);
 }
 
 TEST(TopicTest, PartitionForKeyIsDeterministic) {

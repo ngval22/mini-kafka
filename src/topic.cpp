@@ -8,6 +8,18 @@ namespace mini_kafka {
 
 namespace {
 
+void validate_topic_name(const std::string& name) {
+    if (name.find('/') != std::string::npos) {
+        throw std::runtime_error("topic: name must not contain '/'");
+    }
+    if (name.find('\\') != std::string::npos) {
+        throw std::runtime_error("topic: name must not contain '\\'");
+    }
+    if (name == "." || name == "..") {
+        throw std::runtime_error("topic: invalid topic name");
+    }
+}
+
 std::uint32_t fnv1a32(const std::vector<uint8_t>& bytes) {
     std::uint32_t hash = 2166136261u;
     for (const uint8_t byte : bytes) {
@@ -23,6 +35,7 @@ TopicMetadata make_topic_metadata(std::string name, std::uint32_t partition_coun
     if (name.empty()) {
         throw std::runtime_error("topic: name must not be empty");
     }
+    validate_topic_name(name);
     if (partition_count == 0) {
         throw std::runtime_error("topic: partition_count must be at least 1");
     }

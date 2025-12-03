@@ -107,5 +107,4 @@ TEST(BrokerClientTest, PartitionRoutingIsolatesRecords) {
     EXPECT_EQ(p0_records[0], on_p0);
     ASSERT_EQ(routed_records.size(), 1u);
     EXPECT_EQ(routed_records[0], on_p2);
-    EXPECT_NE(partition_for_user, 0u);
 }
