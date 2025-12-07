@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -28,13 +29,20 @@ public:
     std::string partition_dir(const std::string& topic, std::uint32_t partition) const;
 
 private:
+    struct PartitionEntry {
+        std::mutex mu;
+        std::unique_ptr<SegmentedLog> log;
+    };
+
     const TopicMetadata& metadata_for(const std::string& topic) const;
     void validate_partition(const TopicMetadata& topic, std::uint32_t partition) const;
-    SegmentedLog& open_log(const std::string& topic, std::uint32_t partition);
+    PartitionEntry& entry_for(const std::string& dir);
+    SegmentedLog& open_log(PartitionEntry& entry, const std::string& dir);
 
     std::string base_dir_;
     TopicRegistry topics_;
-    std::unordered_map<std::string, std::unique_ptr<SegmentedLog>> open_logs_;
+    std::mutex partitions_map_mutex_;
+    std::unordered_map<std::string, PartitionEntry> partitions_;
 };
 
 }  // namespace mini_kafka

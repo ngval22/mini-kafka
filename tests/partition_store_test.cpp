@@ -1,7 +1,10 @@
 #include "mini_kafka/partition_store.h"
 
+#include <atomic>
 #include <filesystem>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -96,4 +99,65 @@ TEST(PartitionStoreTest, PartitionDirsFollowConvention) {
     TempLogDir tmp;
     mini_kafka::PartitionLogStore store(tmp.path());
     EXPECT_EQ(store.partition_dir("events", 3), tmp.path() + "/events-p3");
+}
+
+TEST(PartitionStoreTest, ConcurrentAppendsToDifferentPartitions) {
+    TempLogDir tmp;
+    mini_kafka::PartitionLogStore store(tmp.path());
+    store.add_topic(mini_kafka::make_topic_metadata("events", 4));
+
+    constexpr int k_threads = 4;
+    constexpr int k_records_per_thread = 50;
+    std::vector<std::thread> threads;
+    threads.reserve(k_threads);
+
+    for (int partition = 0; partition < k_threads; ++partition) {
+        threads.emplace_back([&store, partition]() {
+            for (int i = 0; i < k_records_per_thread; ++i) {
+                store.append("events", static_cast<std::uint32_t>(partition),
+                             make_record("p" + std::to_string(partition),
+                                         std::to_string(i)));
+            }
+        });
+    }
+    for (std::thread& t : threads) {
+        t.join();
+    }
+
+    for (std::uint32_t partition = 0; partition < 4; ++partition) {
+        EXPECT_EQ(store.read_all("events", partition).size(),
+                  static_cast<std::size_t>(k_records_per_thread));
+    }
+}
+
+TEST(PartitionStoreTest, ConcurrentAppendsToSamePartition) {
+    TempLogDir tmp;
+    mini_kafka::PartitionLogStore store(tmp.path());
+    store.add_topic(mini_kafka::make_topic_metadata("events", 1));
+
+    constexpr int k_threads = 8;
+    constexpr int k_records_per_thread = 25;
+    std::atomic<int> failures{0};
+    std::vector<std::thread> threads;
+    threads.reserve(k_threads);
+
+    for (int t = 0; t < k_threads; ++t) {
+        threads.emplace_back([&store, &failures, t]() {
+            try {
+                for (int i = 0; i < k_records_per_thread; ++i) {
+                    store.append("events", 0,
+                                 make_record("t" + std::to_string(t), std::to_string(i)));
+                }
+            } catch (...) {
+                failures.fetch_add(1);
+            }
+        });
+    }
+    for (std::thread& thread : threads) {
+        thread.join();
+    }
+
+    EXPECT_EQ(failures.load(), 0);
+    EXPECT_EQ(store.read_all("events", 0).size(),
+              static_cast<std::size_t>(k_threads * k_records_per_thread));
 }

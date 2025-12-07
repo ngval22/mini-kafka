@@ -48,23 +48,28 @@ void PartitionLogStore::validate_partition(const TopicMetadata& topic,
     }
 }
 
-SegmentedLog& PartitionLogStore::open_log(const std::string& topic, std::uint32_t partition) {
-    const TopicMetadata& meta = metadata_for(topic);
-    validate_partition(meta, partition);
+PartitionLogStore::PartitionEntry& PartitionLogStore::entry_for(const std::string& dir) {
+    std::lock_guard<std::mutex> map_lock(partitions_map_mutex_);
+    const auto inserted = partitions_.try_emplace(dir);
+    return inserted.first->second;
+}
 
-    const std::string dir = partition_dir(topic, partition);
-    const auto it = open_logs_.find(dir);
-    if (it != open_logs_.end()) {
-        return *it->second;
+SegmentedLog& PartitionLogStore::open_log(PartitionEntry& entry, const std::string& dir) {
+    if (entry.log == nullptr) {
+        entry.log = std::make_unique<SegmentedLog>(dir);
     }
-
-    const auto inserted = open_logs_.emplace(dir, std::make_unique<SegmentedLog>(dir));
-    return *inserted.first->second;
+    return *entry.log;
 }
 
 void PartitionLogStore::append(const std::string& topic, std::uint32_t partition,
                                const Record& record) {
-    open_log(topic, partition).append(record);
+    const TopicMetadata& meta = metadata_for(topic);
+    validate_partition(meta, partition);
+
+    const std::string dir = partition_dir(topic, partition);
+    PartitionEntry& entry = entry_for(dir);
+    std::lock_guard<std::mutex> partition_lock(entry.mu);
+    open_log(entry, dir).append(record);
 }
 
 void PartitionLogStore::append_by_key(const std::string& topic, const Record& record) {
@@ -75,7 +80,13 @@ void PartitionLogStore::append_by_key(const std::string& topic, const Record& re
 
 std::vector<Record> PartitionLogStore::read_all(const std::string& topic,
                                                 std::uint32_t partition) {
-    return open_log(topic, partition).read_all();
+    const TopicMetadata& meta = metadata_for(topic);
+    validate_partition(meta, partition);
+
+    const std::string dir = partition_dir(topic, partition);
+    PartitionEntry& entry = entry_for(dir);
+    std::lock_guard<std::mutex> partition_lock(entry.mu);
+    return open_log(entry, dir).read_all();
 }
 
 }  // namespace mini_kafka
