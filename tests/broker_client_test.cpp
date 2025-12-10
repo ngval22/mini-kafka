@@ -2,9 +2,12 @@
 #include "mini_kafka/client.h"
 #include "mini_kafka/topic.h"
 
+#include <atomic>
 #include <filesystem>
+#include <set>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -107,4 +110,59 @@ TEST(BrokerClientTest, PartitionRoutingIsolatesRecords) {
     EXPECT_EQ(p0_records[0], on_p0);
     ASSERT_EQ(routed_records.size(), 1u);
     EXPECT_EQ(routed_records[0], on_p2);
+}
+
+TEST(BrokerClientTest, ConcurrentProducesOverTcp) {
+    TempDataDir tmp;
+    mini_kafka::Broker broker(tmp.path(), 0);
+    broker.add_topic(mini_kafka::make_topic_metadata("events", 1));
+
+    constexpr int k_client_threads = 10;
+    constexpr int k_connections = k_client_threads + 1;  // produces + one consume
+
+    std::exception_ptr server_error;
+    std::thread server([&]() {
+        try {
+            broker.serve_n(static_cast<std::size_t>(k_connections));
+        } catch (...) {
+            server_error = std::current_exception();
+        }
+    });
+
+    std::atomic<int> produce_failures{0};
+    std::vector<std::thread> clients;
+    clients.reserve(k_client_threads);
+    for (int i = 0; i < k_client_threads; ++i) {
+        clients.emplace_back([&broker, &produce_failures, i]() {
+            try {
+                mini_kafka::produce("127.0.0.1", broker.port(), "events",
+                                    make_record("", "msg-" + std::to_string(i)));
+            } catch (...) {
+                produce_failures.fetch_add(1);
+            }
+        });
+    }
+    for (std::thread& client : clients) {
+        client.join();
+    }
+    EXPECT_EQ(produce_failures.load(), 0);
+
+    const std::vector<mini_kafka::Record> records =
+            mini_kafka::consume_all("127.0.0.1", broker.port(), "events", 0);
+
+    server.join();
+    if (server_error) {
+        std::rethrow_exception(server_error);
+    }
+
+    ASSERT_EQ(records.size(), static_cast<std::size_t>(k_client_threads));
+
+    std::set<std::string> values;
+    for (const mini_kafka::Record& record : records) {
+        ASSERT_TRUE(record.key.empty());
+        values.insert(std::string(record.value.begin(), record.value.end()));
+    }
+    for (int i = 0; i < k_client_threads; ++i) {
+        EXPECT_NE(values.find("msg-" + std::to_string(i)), values.end());
+    }
 }
