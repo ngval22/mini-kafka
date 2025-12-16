@@ -52,3 +52,10 @@ add_executable(mini_kafka_log_dump
 target_link_libraries(mini_kafka_log_dump PRIVATE
     mini_kafka
 )
+
+add_executable(mini_kafka_bench
+    bench_main.cpp
+)
+target_link_libraries(mini_kafka_bench PRIVATE
+    mini_kafka
+)
