@@ -13,6 +13,7 @@ add_library(mini_kafka
     socket_util.cpp
     client.cpp
     broker.cpp
+    broker_metrics.cpp
 )
 
 target_include_directories(mini_kafka

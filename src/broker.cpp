@@ -1,5 +1,6 @@
 #include "mini_kafka/broker.h"
 
+#include <iostream>
 #include <unistd.h>
 
 #include <stdexcept>
@@ -19,7 +20,27 @@ void close_fd(int fd) {
     }
 }
 
-std::vector<uint8_t> handle_request(PartitionLogStore& store, const std::vector<uint8_t>& request) {
+void log_produce(const std::string& topic) {
+    std::cerr << "[broker] produce topic=" << topic << "\n";
+}
+
+void log_consume(const std::string& topic, std::uint32_t partition, std::size_t record_count) {
+    std::cerr << "[broker] consume topic=" << topic << " partition=" << partition
+              << " records=" << record_count << "\n";
+}
+
+void log_error(const char* message) {
+    std::cerr << "[broker] error: " << message << "\n";
+}
+
+void log_metrics_summary(const BrokerMetricsSnapshot& metrics) {
+    std::cerr << "[broker] metrics produce=" << metrics.produce_count
+              << " consume=" << metrics.consume_count << " errors=" << metrics.error_count
+              << "\n";
+}
+
+std::vector<uint8_t> handle_request(PartitionLogStore& store, BrokerMetrics& metrics,
+                                    const std::vector<uint8_t>& request) {
     if (request.empty()) {
         throw std::runtime_error("broker: empty request");
     }
@@ -28,12 +49,17 @@ std::vector<uint8_t> handle_request(PartitionLogStore& store, const std::vector<
     if (request_type == static_cast<uint8_t>(RequestType::Produce)) {
         const ProduceRequest produce = decode_produce_request(request);
         store.append_by_key(produce.topic, produce.record);
+        metrics.on_produce();
+        log_produce(produce.topic);
         return encode_produce_ok_response();
     }
     if (request_type == static_cast<uint8_t>(RequestType::Consume)) {
         const ConsumeRequest consume = decode_consume_request(request);
-        return encode_consume_response(
-                store.read_all(consume.topic, consume.partition));
+        const std::vector<Record> records =
+                store.read_all(consume.topic, consume.partition);
+        metrics.on_consume();
+        log_consume(consume.topic, consume.partition, records.size());
+        return encode_consume_response(records);
     }
     throw std::runtime_error("broker: unknown request type");
 }
@@ -49,10 +75,18 @@ Broker::Broker(std::string data_dir, uint16_t port)
 Broker::~Broker() {
     stop_workers();
     close_fd(listen_fd_);
+    const BrokerMetricsSnapshot snapshot = metrics_.snapshot();
+    if (snapshot.produce_count + snapshot.consume_count + snapshot.error_count > 0) {
+        log_metrics_summary(snapshot);
+    }
 }
 
 uint16_t Broker::port() const {
     return port_;
+}
+
+BrokerMetricsSnapshot Broker::metrics() const {
+    return metrics_.snapshot();
 }
 
 void Broker::add_topic(TopicMetadata topic) {
@@ -131,9 +165,11 @@ void Broker::handle_client(int client_fd) {
     SocketHandle client(client_fd);
     try {
         const std::vector<uint8_t> request = read_frame(client.get());
-        const std::vector<uint8_t> response = handle_request(store_, request);
+        const std::vector<uint8_t> response = handle_request(store_, metrics_, request);
         write_frame(client.get(), response);
     } catch (const std::exception& ex) {
+        metrics_.on_error();
+        log_error(ex.what());
         write_frame(client.get(), encode_error_response(ex.what()));
     }
 }

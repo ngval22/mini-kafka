@@ -9,6 +9,7 @@
 #include <thread>
 #include <vector>
 
+#include "mini_kafka/broker_metrics.h"
 #include "mini_kafka/partition_store.h"
 #include "mini_kafka/topic.h"
 
@@ -25,6 +26,7 @@ public:
     Broker& operator=(Broker&&) = delete;
 
     uint16_t port() const;
+    BrokerMetricsSnapshot metrics() const;
     void add_topic(TopicMetadata topic);
 
     void serve_forever();
@@ -41,6 +43,7 @@ private:
     void on_client_handled();
 
     PartitionLogStore store_;
+    BrokerMetrics metrics_;
     int listen_fd_;
     uint16_t port_;
 

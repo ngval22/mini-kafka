@@ -1,4 +1,5 @@
 #include "mini_kafka/broker.h"
+#include "mini_kafka/broker_metrics.h"
 #include "mini_kafka/client.h"
 #include "mini_kafka/topic.h"
 
@@ -71,6 +72,11 @@ TEST(BrokerClientTest, ProduceThenConsumeOverTcp) {
     ASSERT_EQ(records.size(), 2u);
     EXPECT_EQ(records[0], make_record("k1", "v1"));
     EXPECT_EQ(records[1], make_record("k2", "v2"));
+
+    const mini_kafka::BrokerMetricsSnapshot metrics = broker.metrics();
+    EXPECT_EQ(metrics.produce_count, 2u);
+    EXPECT_EQ(metrics.consume_count, 1u);
+    EXPECT_EQ(metrics.error_count, 0u);
 }
 
 TEST(BrokerClientTest, PartitionRoutingIsolatesRecords) {
