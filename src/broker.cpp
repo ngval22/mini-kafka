@@ -67,9 +67,31 @@ std::vector<uint8_t> handle_request(PartitionLogStore& store, BrokerMetrics& met
 }  // namespace
 
 Broker::Broker(std::string data_dir, uint16_t port)
-        : store_(std::move(data_dir)), listen_fd_(-1), port_(0) {
+        : Broker(BrokerOptions{std::move(data_dir), port, BrokerRole::Leader, std::string(), 0}) {}
+
+Broker::Broker(BrokerOptions options)
+        : store_(std::move(options.data_dir)),
+          role_(options.role),
+          leader_host_(std::move(options.leader_host)),
+          leader_port_(options.leader_port),
+          listen_fd_(-1),
+          port_(0) {
+    if (role_ == BrokerRole::Follower) {
+        if (leader_host_.empty() || leader_port_ == 0) {
+            throw std::runtime_error(
+                    "follower broker requires non-empty leader_host and non-zero leader_port");
+        }
+    }
+
     add_topic(make_topic_metadata("default", 1));
-    listen_fd_ = create_listen_socket(port, &port_);
+    listen_fd_ = create_listen_socket(options.port, &port_);
+
+    if (role_ == BrokerRole::Leader) {
+        std::cerr << "[broker] role=leader\n";
+    } else {
+        std::cerr << "[broker] role=follower leader=" << leader_host_ << ":" << leader_port_
+                  << " (replication not active yet)\n";
+    }
 }
 
 Broker::~Broker() {
@@ -83,6 +105,18 @@ Broker::~Broker() {
 
 uint16_t Broker::port() const {
     return port_;
+}
+
+BrokerRole Broker::role() const {
+    return role_;
+}
+
+const std::string& Broker::leader_host() const {
+    return leader_host_;
+}
+
+uint16_t Broker::leader_port() const {
+    return leader_port_;
 }
 
 BrokerMetricsSnapshot Broker::metrics() const {

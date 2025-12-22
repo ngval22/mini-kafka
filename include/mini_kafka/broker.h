@@ -15,8 +15,22 @@
 
 namespace mini_kafka {
 
+enum class BrokerRole {
+    Leader,
+    Follower,
+};
+
+struct BrokerOptions {
+    std::string data_dir;
+    uint16_t port;
+    BrokerRole role = BrokerRole::Leader;
+    std::string leader_host;
+    uint16_t leader_port = 0;
+};
+
 class Broker {
 public:
+    explicit Broker(BrokerOptions options);
     Broker(std::string data_dir, uint16_t port);
     ~Broker();
 
@@ -26,6 +40,9 @@ public:
     Broker& operator=(Broker&&) = delete;
 
     uint16_t port() const;
+    BrokerRole role() const;
+    const std::string& leader_host() const;
+    uint16_t leader_port() const;
     BrokerMetricsSnapshot metrics() const;
     void add_topic(TopicMetadata topic);
 
@@ -43,6 +60,9 @@ private:
     void on_client_handled();
 
     PartitionLogStore store_;
+    BrokerRole role_;
+    std::string leader_host_;
+    uint16_t leader_port_;
     BrokerMetrics metrics_;
     int listen_fd_;
     uint16_t port_;

@@ -172,3 +172,36 @@ TEST(BrokerClientTest, ConcurrentProducesOverTcp) {
         EXPECT_NE(values.find("msg-" + std::to_string(i)), values.end());
     }
 }
+
+TEST(BrokerClientTest, FollowerRequiresLeaderEndpoint) {
+    TempDataDir tmp;
+    mini_kafka::BrokerOptions bad_host;
+    bad_host.data_dir = tmp.path();
+    bad_host.port = 0;
+    bad_host.role = mini_kafka::BrokerRole::Follower;
+    bad_host.leader_host = "";
+    bad_host.leader_port = 9092;
+    EXPECT_THROW(mini_kafka::Broker(std::move(bad_host)), std::runtime_error);
+
+    mini_kafka::BrokerOptions bad_port;
+    bad_port.data_dir = tmp.path();
+    bad_port.port = 0;
+    bad_port.role = mini_kafka::BrokerRole::Follower;
+    bad_port.leader_host = "127.0.0.1";
+    bad_port.leader_port = 0;
+    EXPECT_THROW(mini_kafka::Broker(std::move(bad_port)), std::runtime_error);
+}
+
+TEST(BrokerClientTest, FollowerOptionsRecordsUpstream) {
+    TempDataDir tmp;
+    mini_kafka::BrokerOptions opts;
+    opts.data_dir = tmp.path();
+    opts.port = 0;
+    opts.role = mini_kafka::BrokerRole::Follower;
+    opts.leader_host = "127.0.0.1";
+    opts.leader_port = 9001;
+    mini_kafka::Broker broker(std::move(opts));
+    EXPECT_EQ(broker.role(), mini_kafka::BrokerRole::Follower);
+    EXPECT_EQ(broker.leader_host(), "127.0.0.1");
+    EXPECT_EQ(broker.leader_port(), static_cast<uint16_t>(9001));
+}

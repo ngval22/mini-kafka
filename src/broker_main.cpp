@@ -24,19 +24,47 @@ std::uint32_t parse_partition_count(const char* text) {
     return static_cast<std::uint32_t>(value);
 }
 
+void print_usage() {
+    std::cerr << "usage: mini_kafka_broker <data_dir> <port> "
+                 "[--follower <leader_host> <leader_port>] [<topic> <partitions>]\n";
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 3 && argc != 5) {
-        std::cerr << "usage: mini_kafka_broker <data_dir> <port> [<topic> <partitions>]\n";
+    if (argc < 3) {
+        print_usage();
         return 1;
     }
 
     try {
-        mini_kafka::Broker broker(argv[1], parse_port(argv[2]));
-        if (argc == 5) {
+        mini_kafka::BrokerOptions options;
+        options.data_dir = argv[1];
+        options.port = parse_port(argv[2]);
+
+        int topic_index = 3;
+        if (argc > 3 && std::string(argv[3]) == "--follower") {
+            if (argc != 6 && argc != 8) {
+                print_usage();
+                return 1;
+            }
+            options.role = mini_kafka::BrokerRole::Follower;
+            options.leader_host = argv[4];
+            options.leader_port = parse_port(argv[5]);
+            topic_index = 6;
+        }
+
+        const bool has_topic = (argc == topic_index + 2);
+        if (argc != topic_index && !has_topic) {
+            print_usage();
+            return 1;
+        }
+
+        mini_kafka::Broker broker(std::move(options));
+        if (has_topic) {
             broker.add_topic(
-                    mini_kafka::make_topic_metadata(argv[3], parse_partition_count(argv[4])));
+                    mini_kafka::make_topic_metadata(argv[topic_index],
+                                                    parse_partition_count(argv[topic_index + 1])));
         }
         std::cout << "listening on port " << broker.port() << "\n";
         broker.serve_forever();
