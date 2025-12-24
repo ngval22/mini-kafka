@@ -11,6 +11,7 @@ namespace mini_kafka {
 enum class RequestType : uint8_t {
     Produce = 1,
     Consume = 2,
+    ReplicaFetch = 3,
 };
 
 enum class ResponseType : uint8_t {
@@ -29,6 +30,12 @@ struct ConsumeRequest {
     std::uint32_t partition;
 };
 
+struct ReplicaFetchRequest {
+    std::string topic;
+    std::uint32_t partition;
+    std::uint64_t from_offset;
+};
+
 std::vector<uint8_t> encode_frame(const std::vector<uint8_t>& payload);
 
 // Produce payload: [type][u32 topic_len][topic bytes][record bytes]
@@ -39,6 +46,13 @@ ProduceRequest decode_produce_request(const std::vector<uint8_t>& payload);
 // Consume payload: [type][u32 topic_len][topic bytes][u32 partition]
 std::vector<uint8_t> encode_consume_request(const std::string& topic, std::uint32_t partition);
 ConsumeRequest decode_consume_request(const std::vector<uint8_t>& payload);
+
+// Replica fetch payload: [type][u32 topic_len][topic bytes][u32 partition][u64 from_offset]
+// Response reuses consume records encoding.
+std::vector<uint8_t> encode_replica_fetch_request(const std::string& topic,
+                                                    std::uint32_t partition,
+                                                    std::uint64_t from_offset);
+ReplicaFetchRequest decode_replica_fetch_request(const std::vector<uint8_t>& payload);
 
 std::vector<uint8_t> encode_produce_ok_response();
 void decode_produce_ok_response(const std::vector<uint8_t>& payload);

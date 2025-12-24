@@ -53,6 +53,29 @@ TEST(PartitionStoreTest, PartitionsAreIsolated) {
     EXPECT_EQ(store.read_all("events", 1), std::vector<mini_kafka::Record>{make_record("k1", "v1")});
 }
 
+TEST(PartitionStoreTest, ReadFromSkipsEarlierOffsets) {
+    TempLogDir tmp;
+    mini_kafka::PartitionLogStore store(tmp.path());
+    store.add_topic(mini_kafka::make_topic_metadata("events", 1));
+
+    store.append("events", 0, make_record("k0", "v0"));
+    store.append("events", 0, make_record("k1", "v1"));
+    store.append("events", 0, make_record("k2", "v2"));
+
+    const std::vector<mini_kafka::Record> all = {
+            make_record("k0", "v0"),
+            make_record("k1", "v1"),
+            make_record("k2", "v2"),
+    };
+    const std::vector<mini_kafka::Record> from_one = {
+            make_record("k1", "v1"),
+            make_record("k2", "v2"),
+    };
+    EXPECT_EQ(store.read_from("events", 0, 0), all);
+    EXPECT_EQ(store.read_from("events", 0, 1), from_one);
+    EXPECT_EQ(store.read_from("events", 0, 3), std::vector<mini_kafka::Record>{});
+}
+
 TEST(PartitionStoreTest, AppendByKeyRoutesToPartition) {
     TempLogDir tmp;
     mini_kafka::PartitionLogStore store(tmp.path());

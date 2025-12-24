@@ -23,6 +23,17 @@ uint32_t read_u32_le(const std::vector<uint8_t>& payload, std::size_t offset) {
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+void append_u64_le(std::vector<uint8_t>& buf, uint64_t value) {
+    append_u32_le(buf, static_cast<uint32_t>(value & 0xFFFFFFFFu));
+    append_u32_le(buf, static_cast<uint32_t>((value >> 32) & 0xFFFFFFFFu));
+}
+
+uint64_t read_u64_le(const std::vector<uint8_t>& payload, std::size_t offset) {
+    const uint64_t low = read_u32_le(payload, offset);
+    const uint64_t high = read_u32_le(payload, offset + 4);
+    return low | (high << 32);
+}
+
 uint8_t first_byte_or_throw(const std::vector<uint8_t>& payload, const char* what) {
     if (payload.empty()) {
         throw std::runtime_error(std::string("protocol: empty ") + what);
@@ -114,6 +125,37 @@ ConsumeRequest decode_consume_request(const std::vector<uint8_t>& payload) {
         throw std::runtime_error("protocol: consume request has unexpected trailing data");
     }
     request.partition = read_u32_le(payload, offset);
+    return request;
+}
+
+std::vector<uint8_t> encode_replica_fetch_request(const std::string& topic,
+                                                    const std::uint32_t partition,
+                                                    const std::uint64_t from_offset) {
+    std::vector<uint8_t> payload;
+    payload.push_back(static_cast<uint8_t>(RequestType::ReplicaFetch));
+    append_string(payload, topic);
+    append_u32_le(payload, partition);
+    append_u64_le(payload, from_offset);
+    return payload;
+}
+
+ReplicaFetchRequest decode_replica_fetch_request(const std::vector<uint8_t>& payload) {
+    if (first_byte_or_throw(payload, "replica fetch request") !=
+        static_cast<uint8_t>(RequestType::ReplicaFetch)) {
+        throw std::runtime_error("protocol: wrong request type for replica fetch");
+    }
+
+    ReplicaFetchRequest request;
+    std::size_t offset = decode_string_at(payload, 1, request.topic);
+    if (offset + 12 > payload.size()) {
+        throw std::runtime_error("protocol: replica fetch request truncated");
+    }
+    request.partition = read_u32_le(payload, offset);
+    offset += 4;
+    request.from_offset = read_u64_le(payload, offset);
+    if (offset + 8 != payload.size()) {
+        throw std::runtime_error("protocol: replica fetch request has unexpected trailing data");
+    }
     return request;
 }
 

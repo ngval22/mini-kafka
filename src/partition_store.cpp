@@ -89,4 +89,15 @@ std::vector<Record> PartitionLogStore::read_all(const std::string& topic,
     return open_log(entry, dir).read_all();
 }
 
+std::vector<Record> PartitionLogStore::read_from(const std::string& topic,
+                                                 const std::uint32_t partition,
+                                                 const std::uint64_t from_offset) {
+    std::vector<Record> records = read_all(topic, partition);
+    if (from_offset >= records.size()) {
+        return {};
+    }
+    return std::vector<Record>(records.begin() + static_cast<std::ptrdiff_t>(from_offset),
+                               records.end());
+}
+
 }  // namespace mini_kafka

@@ -29,6 +29,12 @@ void log_consume(const std::string& topic, std::uint32_t partition, std::size_t 
               << " records=" << record_count << "\n";
 }
 
+void log_replica_fetch(const std::string& topic, std::uint32_t partition,
+                       std::uint64_t from_offset, std::size_t record_count) {
+    std::cerr << "[broker] replica_fetch topic=" << topic << " partition=" << partition
+              << " from_offset=" << from_offset << " records=" << record_count << "\n";
+}
+
 void log_error(const char* message) {
     std::cerr << "[broker] error: " << message << "\n";
 }
@@ -40,7 +46,7 @@ void log_metrics_summary(const BrokerMetricsSnapshot& metrics) {
 }
 
 std::vector<uint8_t> handle_request(PartitionLogStore& store, BrokerMetrics& metrics,
-                                    const std::vector<uint8_t>& request) {
+                                    BrokerRole role, const std::vector<uint8_t>& request) {
     if (request.empty()) {
         throw std::runtime_error("broker: empty request");
     }
@@ -59,6 +65,16 @@ std::vector<uint8_t> handle_request(PartitionLogStore& store, BrokerMetrics& met
                 store.read_all(consume.topic, consume.partition);
         metrics.on_consume();
         log_consume(consume.topic, consume.partition, records.size());
+        return encode_consume_response(records);
+    }
+    if (request_type == static_cast<uint8_t>(RequestType::ReplicaFetch)) {
+        if (role != BrokerRole::Leader) {
+            throw std::runtime_error("broker: replica fetch only supported on leader");
+        }
+        const ReplicaFetchRequest fetch = decode_replica_fetch_request(request);
+        const std::vector<Record> records =
+                store.read_from(fetch.topic, fetch.partition, fetch.from_offset);
+        log_replica_fetch(fetch.topic, fetch.partition, fetch.from_offset, records.size());
         return encode_consume_response(records);
     }
     throw std::runtime_error("broker: unknown request type");
@@ -90,7 +106,7 @@ Broker::Broker(BrokerOptions options)
         std::cerr << "[broker] role=leader\n";
     } else {
         std::cerr << "[broker] role=follower leader=" << leader_host_ << ":" << leader_port_
-                  << " (replication not active yet)\n";
+                  << " (sync not active yet)\n";
     }
 }
 
@@ -199,7 +215,7 @@ void Broker::handle_client(int client_fd) {
     SocketHandle client(client_fd);
     try {
         const std::vector<uint8_t> request = read_frame(client.get());
-        const std::vector<uint8_t> response = handle_request(store_, metrics_, request);
+        const std::vector<uint8_t> response = handle_request(store_, metrics_, role_, request);
         write_frame(client.get(), response);
     } catch (const std::exception& ex) {
         metrics_.on_error();

@@ -173,6 +173,42 @@ TEST(BrokerClientTest, ConcurrentProducesOverTcp) {
     }
 }
 
+TEST(BrokerClientTest, LeaderReplicaFetchReturnsRecordsFromOffset) {
+    TempDataDir tmp;
+    mini_kafka::Broker broker(tmp.path(), 0);
+    broker.add_topic(mini_kafka::make_topic_metadata("events", 1));
+
+    std::exception_ptr server_error;
+    std::thread server([&]() {
+        try {
+            broker.serve_n(5);
+        } catch (...) {
+            server_error = std::current_exception();
+        }
+    });
+
+    mini_kafka::produce("127.0.0.1", broker.port(), "events", make_record("k0", "v0"));
+    mini_kafka::produce("127.0.0.1", broker.port(), "events", make_record("k1", "v1"));
+    mini_kafka::produce("127.0.0.1", broker.port(), "events", make_record("k2", "v2"));
+
+    const std::vector<mini_kafka::Record> from_zero =
+            mini_kafka::replica_fetch("127.0.0.1", broker.port(), "events", 0, 0);
+    const std::vector<mini_kafka::Record> from_two =
+            mini_kafka::replica_fetch("127.0.0.1", broker.port(), "events", 0, 2);
+
+    server.join();
+    if (server_error) {
+        std::rethrow_exception(server_error);
+    }
+
+    ASSERT_EQ(from_zero.size(), 3u);
+    EXPECT_EQ(from_zero[0], make_record("k0", "v0"));
+    EXPECT_EQ(from_zero[2], make_record("k2", "v2"));
+
+    ASSERT_EQ(from_two.size(), 1u);
+    EXPECT_EQ(from_two[0], make_record("k2", "v2"));
+}
+
 TEST(BrokerClientTest, FollowerRequiresLeaderEndpoint) {
     TempDataDir tmp;
     mini_kafka::BrokerOptions bad_host;

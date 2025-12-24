@@ -31,6 +31,16 @@ TEST(ProtocolTest, ConsumeRequestRoundTripsTopicAndPartition) {
     EXPECT_EQ(decoded.partition, 2u);
 }
 
+TEST(ProtocolTest, ReplicaFetchRequestRoundTripsTopicPartitionAndOffset) {
+    const std::vector<uint8_t> payload =
+            mini_kafka::encode_replica_fetch_request("events", 1, 42);
+    const mini_kafka::ReplicaFetchRequest decoded =
+            mini_kafka::decode_replica_fetch_request(payload);
+    EXPECT_EQ(decoded.topic, "events");
+    EXPECT_EQ(decoded.partition, 1u);
+    EXPECT_EQ(decoded.from_offset, 42u);
+}
+
 TEST(ProtocolTest, ConsumeResponseRoundTripsRecords) {
     const std::vector<mini_kafka::Record> original = {
             make_record("a", "1"),
