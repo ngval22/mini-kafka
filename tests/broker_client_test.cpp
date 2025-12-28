@@ -1,6 +1,7 @@
 #include "mini_kafka/broker.h"
 #include "mini_kafka/broker_metrics.h"
 #include "mini_kafka/client.h"
+#include "mini_kafka/partition_store.h"
 #include "mini_kafka/topic.h"
 
 #include <atomic>
@@ -207,6 +208,51 @@ TEST(BrokerClientTest, LeaderReplicaFetchReturnsRecordsFromOffset) {
 
     ASSERT_EQ(from_two.size(), 1u);
     EXPECT_EQ(from_two[0], make_record("k2", "v2"));
+}
+
+TEST(BrokerClientTest, FollowerSyncsRecordsFromLeader) {
+    TempDataDir leader_dir;
+    TempDataDir follower_dir;
+
+    mini_kafka::Broker leader(leader_dir.path(), 0);
+    leader.add_topic(mini_kafka::make_topic_metadata("events", 1));
+
+    mini_kafka::BrokerOptions follower_opts;
+    follower_opts.data_dir = follower_dir.path();
+    follower_opts.port = 0;
+    follower_opts.role = mini_kafka::BrokerRole::Follower;
+    follower_opts.leader_host = "127.0.0.1";
+    follower_opts.leader_port = leader.port();
+    mini_kafka::Broker follower(std::move(follower_opts));
+    follower.add_topic(mini_kafka::make_topic_metadata("events", 1));
+
+    std::exception_ptr leader_error;
+    std::thread leader_server([&]() {
+        try {
+            leader.serve_n(5);
+        } catch (...) {
+            leader_error = std::current_exception();
+        }
+    });
+
+    mini_kafka::produce("127.0.0.1", leader.port(), "events", make_record("k0", "v0"));
+    mini_kafka::produce("127.0.0.1", leader.port(), "events", make_record("k1", "v1"));
+    mini_kafka::produce("127.0.0.1", leader.port(), "events", make_record("k2", "v2"));
+    follower.sync_from_leader();
+
+    leader_server.join();
+    if (leader_error) {
+        std::rethrow_exception(leader_error);
+    }
+
+    mini_kafka::PartitionLogStore follower_store(follower_dir.path());
+    follower_store.add_topic(mini_kafka::make_topic_metadata("events", 1));
+    const std::vector<mini_kafka::Record> records = follower_store.read_all("events", 0);
+
+    ASSERT_EQ(records.size(), 3u);
+    EXPECT_EQ(records[0], make_record("k0", "v0"));
+    EXPECT_EQ(records[1], make_record("k1", "v1"));
+    EXPECT_EQ(records[2], make_record("k2", "v2"));
 }
 
 TEST(BrokerClientTest, FollowerRequiresLeaderEndpoint) {

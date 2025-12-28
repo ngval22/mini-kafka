@@ -7,6 +7,7 @@
 #include <string>
 #include <utility>
 
+#include "mini_kafka/client.h"
 #include "mini_kafka/protocol.h"
 #include "socket_util.h"
 
@@ -106,7 +107,7 @@ Broker::Broker(BrokerOptions options)
         std::cerr << "[broker] role=leader\n";
     } else {
         std::cerr << "[broker] role=follower leader=" << leader_host_ << ":" << leader_port_
-                  << " (sync not active yet)\n";
+                  << "\n";
     }
 }
 
@@ -141,6 +142,34 @@ BrokerMetricsSnapshot Broker::metrics() const {
 
 void Broker::add_topic(TopicMetadata topic) {
     store_.add_topic(std::move(topic));
+}
+
+void Broker::sync_from_leader() {
+    if (role_ != BrokerRole::Follower) {
+        return;
+    }
+
+    for (const TopicMetadata& topic : store_.topics().topics()) {
+        for (std::uint32_t partition = 0; partition < topic.partition_count; ++partition) {
+            const std::uint64_t from_offset = static_cast<std::uint64_t>(
+                    store_.read_all(topic.name, partition).size());
+            const std::vector<Record> records = replica_fetch(
+                    leader_host_, leader_port_, topic.name, partition, from_offset);
+            for (const Record& record : records) {
+                store_.append(topic.name, partition, record);
+            }
+            if (!records.empty()) {
+                std::cerr << "[broker] synced topic=" << topic.name << " partition=" << partition
+                          << " records=" << records.size() << "\n";
+            }
+        }
+    }
+}
+
+void Broker::sync_from_leader_if_follower() {
+    if (role_ == BrokerRole::Follower) {
+        sync_from_leader();
+    }
 }
 
 void Broker::start_workers() {
@@ -225,6 +254,7 @@ void Broker::handle_client(int client_fd) {
 }
 
 void Broker::serve_forever() {
+    sync_from_leader_if_follower();
     start_workers();
     while (true) {
         const int client_fd = accept_client(listen_fd_);
@@ -233,12 +263,13 @@ void Broker::serve_forever() {
 }
 
 void Broker::serve_n(std::size_t max_connections) {
-    start_workers();
+    sync_from_leader_if_follower();
     {
         std::lock_guard<std::mutex> lock(completion_mutex_);
         track_job_completion_ = true;
         jobs_remaining_ = max_connections;
     }
+    start_workers();
 
     for (std::size_t i = 0; i < max_connections; ++i) {
         const int client_fd = accept_client(listen_fd_);

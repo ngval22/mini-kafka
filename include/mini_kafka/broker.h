@@ -45,6 +45,7 @@ public:
     uint16_t leader_port() const;
     BrokerMetricsSnapshot metrics() const;
     void add_topic(TopicMetadata topic);
+    void sync_from_leader();
 
     void serve_forever();
     void serve_n(std::size_t max_connections);
@@ -58,6 +59,7 @@ private:
     void stop_workers();
     void enqueue_client(int client_fd);
     void on_client_handled();
+    void sync_from_leader_if_follower();
 
     PartitionLogStore store_;
     BrokerRole role_;
