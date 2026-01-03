@@ -26,7 +26,7 @@ std::uint32_t parse_partition_count(const char* text) {
 
 void print_usage() {
     std::cerr << "usage: mini_kafka_broker <data_dir> <port> "
-                 "[--follower <leader_host> <leader_port>] [<topic> <partitions>]\n";
+                 "[--follower <leader_host> <leader_port> | --promote] [<topic> <partitions>]\n";
 }
 
 }  // namespace
@@ -43,15 +43,21 @@ int main(int argc, char** argv) {
         options.port = parse_port(argv[2]);
 
         int topic_index = 3;
-        if (argc > 3 && std::string(argv[3]) == "--follower") {
-            if (argc != 6 && argc != 8) {
-                print_usage();
-                return 1;
+        if (argc > 3) {
+            const std::string flag = argv[3];
+            if (flag == "--follower") {
+                if (argc != 6 && argc != 8) {
+                    print_usage();
+                    return 1;
+                }
+                options.role = mini_kafka::BrokerRole::Follower;
+                options.leader_host = argv[4];
+                options.leader_port = parse_port(argv[5]);
+                topic_index = 6;
+            } else if (flag == "--promote") {
+                options.promoted = true;
+                topic_index = 4;
             }
-            options.role = mini_kafka::BrokerRole::Follower;
-            options.leader_host = argv[4];
-            options.leader_port = parse_port(argv[5]);
-            topic_index = 6;
         }
 
         const bool has_topic = (argc == topic_index + 2);

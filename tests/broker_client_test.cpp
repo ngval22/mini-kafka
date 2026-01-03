@@ -5,10 +5,11 @@
 #include "mini_kafka/topic.h"
 
 #include <atomic>
+#include <chrono>
 #include <filesystem>
+#include <thread>
 #include <set>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -253,6 +254,129 @@ TEST(BrokerClientTest, FollowerSyncsRecordsFromLeader) {
     EXPECT_EQ(records[0], make_record("k0", "v0"));
     EXPECT_EQ(records[1], make_record("k1", "v1"));
     EXPECT_EQ(records[2], make_record("k2", "v2"));
+}
+
+TEST(BrokerClientTest, FollowerRejectsProduce) {
+    TempDataDir leader_dir;
+    TempDataDir follower_dir;
+
+    mini_kafka::Broker leader(leader_dir.path(), 0);
+    mini_kafka::BrokerOptions follower_opts;
+    follower_opts.data_dir = follower_dir.path();
+    follower_opts.port = 0;
+    follower_opts.role = mini_kafka::BrokerRole::Follower;
+    follower_opts.leader_host = "127.0.0.1";
+    follower_opts.leader_port = leader.port();
+    mini_kafka::Broker follower(std::move(follower_opts));
+
+    std::exception_ptr leader_error;
+    std::thread leader_server([&]() {
+        try {
+            leader.serve_n(1);
+        } catch (...) {
+            leader_error = std::current_exception();
+        }
+    });
+
+    std::exception_ptr follower_error;
+    std::thread follower_server([&]() {
+        try {
+            follower.serve_n(1);
+        } catch (...) {
+            follower_error = std::current_exception();
+        }
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_THROW(mini_kafka::produce("127.0.0.1", follower.port(), "default",
+                                     make_record("k", "v")),
+                 std::runtime_error);
+
+    follower_server.join();
+    leader_server.join();
+    if (follower_error) {
+        std::rethrow_exception(follower_error);
+    }
+    if (leader_error) {
+        std::rethrow_exception(leader_error);
+    }
+}
+
+TEST(BrokerClientTest, PromotedLeaderAcceptsProduceAfterSync) {
+    TempDataDir leader_dir;
+    TempDataDir follower_dir;
+
+    mini_kafka::Broker leader(leader_dir.path(), 0);
+    leader.add_topic(mini_kafka::make_topic_metadata("events", 1));
+
+    mini_kafka::BrokerOptions follower_opts;
+    follower_opts.data_dir = follower_dir.path();
+    follower_opts.port = 0;
+    follower_opts.role = mini_kafka::BrokerRole::Follower;
+    follower_opts.leader_host = "127.0.0.1";
+    follower_opts.leader_port = leader.port();
+    mini_kafka::Broker follower(std::move(follower_opts));
+    follower.add_topic(mini_kafka::make_topic_metadata("events", 1));
+
+    std::exception_ptr leader_error;
+    std::thread leader_server([&]() {
+        try {
+            leader.serve_n(4);
+        } catch (...) {
+            leader_error = std::current_exception();
+        }
+    });
+
+    mini_kafka::produce("127.0.0.1", leader.port(), "events", make_record("k0", "v0"));
+    mini_kafka::produce("127.0.0.1", leader.port(), "events", make_record("k1", "v1"));
+    follower.sync_from_leader();
+
+    leader_server.join();
+    if (leader_error) {
+        std::rethrow_exception(leader_error);
+    }
+
+    mini_kafka::BrokerOptions promoted_opts;
+    promoted_opts.data_dir = follower_dir.path();
+    promoted_opts.port = 0;
+    promoted_opts.promoted = true;
+    mini_kafka::Broker promoted(std::move(promoted_opts));
+    promoted.add_topic(mini_kafka::make_topic_metadata("events", 1));
+
+    std::exception_ptr promoted_error;
+    std::thread promoted_server([&]() {
+        try {
+            promoted.serve_n(2);
+        } catch (...) {
+            promoted_error = std::current_exception();
+        }
+    });
+
+    mini_kafka::produce("127.0.0.1", promoted.port(), "events", make_record("k2", "after"));
+    const std::vector<mini_kafka::Record> records =
+            mini_kafka::consume_all("127.0.0.1", promoted.port(), "events", 0);
+
+    promoted_server.join();
+    if (promoted_error) {
+        std::rethrow_exception(promoted_error);
+    }
+
+    ASSERT_EQ(records.size(), 3u);
+    EXPECT_EQ(records[0], make_record("k0", "v0"));
+    EXPECT_EQ(records[1], make_record("k1", "v1"));
+    EXPECT_EQ(records[2], make_record("k2", "after"));
+}
+
+TEST(BrokerClientTest, PromoteRejectsFollowerRole) {
+    TempDataDir tmp;
+    mini_kafka::BrokerOptions opts;
+    opts.data_dir = tmp.path();
+    opts.port = 0;
+    opts.role = mini_kafka::BrokerRole::Follower;
+    opts.promoted = true;
+    opts.leader_host = "127.0.0.1";
+    opts.leader_port = 9092;
+    EXPECT_THROW(mini_kafka::Broker(std::move(opts)), std::runtime_error);
 }
 
 TEST(BrokerClientTest, FollowerRequiresLeaderEndpoint) {

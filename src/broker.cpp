@@ -54,6 +54,9 @@ std::vector<uint8_t> handle_request(PartitionLogStore& store, BrokerMetrics& met
 
     const uint8_t request_type = request[0];
     if (request_type == static_cast<uint8_t>(RequestType::Produce)) {
+        if (role == BrokerRole::Follower) {
+            throw std::runtime_error("broker: produce not allowed on follower; use the leader");
+        }
         const ProduceRequest produce = decode_produce_request(request);
         store.append_by_key(produce.topic, produce.record);
         metrics.on_produce();
@@ -93,6 +96,9 @@ Broker::Broker(BrokerOptions options)
           leader_port_(options.leader_port),
           listen_fd_(-1),
           port_(0) {
+    if (options.promoted && role_ == BrokerRole::Follower) {
+        throw std::runtime_error("broker: --promote cannot be used with --follower");
+    }
     if (role_ == BrokerRole::Follower) {
         if (leader_host_.empty() || leader_port_ == 0) {
             throw std::runtime_error(
@@ -103,7 +109,9 @@ Broker::Broker(BrokerOptions options)
     add_topic(make_topic_metadata("default", 1));
     listen_fd_ = create_listen_socket(options.port, &port_);
 
-    if (role_ == BrokerRole::Leader) {
+    if (role_ == BrokerRole::Leader && options.promoted) {
+        std::cerr << "[broker] role=leader (manually promoted)\n";
+    } else if (role_ == BrokerRole::Leader) {
         std::cerr << "[broker] role=leader\n";
     } else {
         std::cerr << "[broker] role=follower leader=" << leader_host_ << ":" << leader_port_

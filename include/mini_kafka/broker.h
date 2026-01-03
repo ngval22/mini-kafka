@@ -26,6 +26,7 @@ struct BrokerOptions {
     BrokerRole role = BrokerRole::Leader;
     std::string leader_host;
     uint16_t leader_port = 0;
+    bool promoted = false;
 };
 
 class Broker {
