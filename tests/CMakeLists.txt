@@ -21,6 +21,7 @@ add_executable(mini_kafka_tests
     sparse_index_test.cpp
     protocol_test.cpp
     broker_client_test.cpp
+    consumer_group_test.cpp
 )
 
 target_link_libraries(mini_kafka_tests PRIVATE

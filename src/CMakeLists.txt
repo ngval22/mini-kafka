@@ -14,6 +14,7 @@ add_library(mini_kafka
     client.cpp
     broker.cpp
     broker_metrics.cpp
+    consumer_group.cpp
 )
 
 target_include_directories(mini_kafka

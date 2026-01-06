@@ -1,0 +1,66 @@
+#include "mini_kafka/consumer_group.h"
+
+#include <algorithm>
+#include <stdexcept>
+
+namespace mini_kafka {
+
+namespace {
+
+void validate_group_id(const std::string& group_id) {
+    if (group_id.empty()) {
+        throw std::runtime_error("consumer group: group_id must not be empty");
+    }
+}
+
+}  // namespace
+
+std::string ConsumerGroupRegistry::join(const std::string& group_id,
+                                        const std::string& member_id) {
+    validate_group_id(group_id);
+
+    std::lock_guard<std::mutex> lock(mu_);
+    std::vector<std::string>& members = groups_[group_id];
+
+    std::string assigned = member_id;
+    if (assigned.empty()) {
+        assigned = "member-" + std::to_string(next_member_seq_++);
+    }
+
+    if (std::find(members.begin(), members.end(), assigned) != members.end()) {
+        return assigned;
+    }
+    members.push_back(assigned);
+    return assigned;
+}
+
+void ConsumerGroupRegistry::leave(const std::string& group_id, const std::string& member_id) {
+    if (group_id.empty() || member_id.empty()) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(mu_);
+    const auto group_it = groups_.find(group_id);
+    if (group_it == groups_.end()) {
+        return;
+    }
+
+    std::vector<std::string>& members = group_it->second;
+    members.erase(std::remove(members.begin(), members.end(), member_id), members.end());
+    if (members.empty()) {
+        groups_.erase(group_it);
+    }
+}
+
+std::vector<std::string> ConsumerGroupRegistry::members(const std::string& group_id) const {
+    std::lock_guard<std::mutex> lock(mu_);
+    const auto group_it = groups_.find(group_id);
+    if (group_it == groups_.end()) {
+        return {};
+    }
+    std::vector<std::string> result = group_it->second;
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
+}  // namespace mini_kafka
