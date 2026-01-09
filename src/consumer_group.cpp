@@ -15,6 +15,31 @@ void validate_group_id(const std::string& group_id) {
 
 }  // namespace
 
+PartitionAssignment assign_partitions_round_robin(const std::vector<std::string>& members,
+                                                    const std::uint32_t partition_count) {
+    if (partition_count == 0) {
+        throw std::runtime_error("consumer group: partition_count must be greater than zero");
+    }
+
+    std::vector<std::string> sorted_members = members;
+    std::sort(sorted_members.begin(), sorted_members.end());
+
+    PartitionAssignment assignment;
+    for (const std::string& member : sorted_members) {
+        assignment.emplace(member, std::vector<std::uint32_t>{});
+    }
+    if (sorted_members.empty()) {
+        return assignment;
+    }
+
+    const std::size_t member_count = sorted_members.size();
+    for (std::uint32_t partition = 0; partition < partition_count; ++partition) {
+        const std::string& member = sorted_members[partition % member_count];
+        assignment[member].push_back(partition);
+    }
+    return assignment;
+}
+
 std::string ConsumerGroupRegistry::join(const std::string& group_id,
                                         const std::string& member_id) {
     validate_group_id(group_id);

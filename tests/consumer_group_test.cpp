@@ -53,3 +53,37 @@ TEST(ConsumerGroupTest, RejectsEmptyGroupId) {
     mini_kafka::ConsumerGroupRegistry registry;
     EXPECT_THROW(registry.join("", "alice"), std::runtime_error);
 }
+
+TEST(ConsumerGroupTest, RoundRobinAssignsPartitions) {
+    const mini_kafka::PartitionAssignment assignment = mini_kafka::assign_partitions_round_robin(
+            {"bob", "alice", "charlie"}, 4);
+
+    ASSERT_EQ(assignment.at("alice"), (std::vector<std::uint32_t>{0, 3}));
+    ASSERT_EQ(assignment.at("bob"), (std::vector<std::uint32_t>{1}));
+    ASSERT_EQ(assignment.at("charlie"), (std::vector<std::uint32_t>{2}));
+}
+
+TEST(ConsumerGroupTest, RoundRobinSingleMemberGetsAllPartitions) {
+    const mini_kafka::PartitionAssignment assignment =
+            mini_kafka::assign_partitions_round_robin({"only"}, 3);
+    ASSERT_EQ(assignment.size(), 1u);
+    EXPECT_EQ(assignment.at("only"), (std::vector<std::uint32_t>{0, 1, 2}));
+}
+
+TEST(ConsumerGroupTest, RoundRobinMoreMembersThanPartitions) {
+    const mini_kafka::PartitionAssignment assignment =
+            mini_kafka::assign_partitions_round_robin({"a", "b", "c"}, 2);
+    EXPECT_EQ(assignment.at("a"), (std::vector<std::uint32_t>{0}));
+    EXPECT_EQ(assignment.at("b"), (std::vector<std::uint32_t>{1}));
+    EXPECT_TRUE(assignment.at("c").empty());
+}
+
+TEST(ConsumerGroupTest, RoundRobinNoMembersReturnsEmpty) {
+    const mini_kafka::PartitionAssignment assignment =
+            mini_kafka::assign_partitions_round_robin({}, 4);
+    EXPECT_TRUE(assignment.empty());
+}
+
+TEST(ConsumerGroupTest, RoundRobinRejectsZeroPartitionCount) {
+    EXPECT_THROW(mini_kafka::assign_partitions_round_robin({"alice"}, 0), std::runtime_error);
+}

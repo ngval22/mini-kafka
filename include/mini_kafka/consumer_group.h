@@ -8,6 +8,13 @@
 
 namespace mini_kafka {
 
+using PartitionAssignment = std::unordered_map<std::string, std::vector<std::uint32_t>>;
+
+// Round-robin: partition p goes to member (p % member_count). Members are sorted first.
+// Every member appears in the result (possibly with an empty partition list).
+PartitionAssignment assign_partitions_round_robin(const std::vector<std::string>& members,
+                                                    std::uint32_t partition_count);
+
 // In-memory consumer group membership (join / leave). Thread-safe.
 class ConsumerGroupRegistry {
 public:
