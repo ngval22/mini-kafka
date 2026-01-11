@@ -34,4 +34,22 @@ private:
     std::uint64_t next_member_seq_ = 0;
 };
 
+// In-memory committed offsets per (group, topic, partition). Thread-safe.
+// Offset is the next record index to read (0 = start of log).
+class CommittedOffsetStore {
+public:
+    void commit(const std::string& group_id, const std::string& topic, std::uint32_t partition,
+                std::uint64_t offset);
+
+    // Returns 0 when nothing has been committed for this key.
+    std::uint64_t committed_offset(const std::string& group_id, const std::string& topic,
+                                   std::uint32_t partition) const;
+
+private:
+    mutable std::mutex mu_;
+    std::unordered_map<std::string,
+                       std::unordered_map<std::string, std::unordered_map<std::uint32_t, std::uint64_t>>>
+            offsets_;
+};
+
 }  // namespace mini_kafka

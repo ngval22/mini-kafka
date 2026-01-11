@@ -87,3 +87,39 @@ TEST(ConsumerGroupTest, RoundRobinNoMembersReturnsEmpty) {
 TEST(ConsumerGroupTest, RoundRobinRejectsZeroPartitionCount) {
     EXPECT_THROW(mini_kafka::assign_partitions_round_robin({"alice"}, 0), std::runtime_error);
 }
+
+TEST(ConsumerGroupTest, CommitAndReadOffset) {
+    mini_kafka::CommittedOffsetStore store;
+    store.commit("g", "events", 0, 42);
+    EXPECT_EQ(store.committed_offset("g", "events", 0), 42u);
+}
+
+TEST(ConsumerGroupTest, UncommittedOffsetDefaultsToZero) {
+    mini_kafka::CommittedOffsetStore store;
+    EXPECT_EQ(store.committed_offset("g", "events", 0), 0u);
+}
+
+TEST(ConsumerGroupTest, CommitOverwritesPreviousOffset) {
+    mini_kafka::CommittedOffsetStore store;
+    store.commit("g", "events", 1, 5);
+    store.commit("g", "events", 1, 99);
+    EXPECT_EQ(store.committed_offset("g", "events", 1), 99u);
+}
+
+TEST(ConsumerGroupTest, OffsetsAreScopedPerGroupTopicPartition) {
+    mini_kafka::CommittedOffsetStore store;
+    store.commit("g1", "events", 0, 10);
+    store.commit("g2", "events", 0, 20);
+    store.commit("g1", "other", 0, 30);
+    store.commit("g1", "events", 1, 40);
+    EXPECT_EQ(store.committed_offset("g1", "events", 0), 10u);
+    EXPECT_EQ(store.committed_offset("g2", "events", 0), 20u);
+    EXPECT_EQ(store.committed_offset("g1", "other", 0), 30u);
+    EXPECT_EQ(store.committed_offset("g1", "events", 1), 40u);
+}
+
+TEST(ConsumerGroupTest, CommitRejectsEmptyGroupOrTopic) {
+    mini_kafka::CommittedOffsetStore store;
+    EXPECT_THROW(store.commit("", "events", 0, 1), std::runtime_error);
+    EXPECT_THROW(store.commit("g", "", 0, 1), std::runtime_error);
+}

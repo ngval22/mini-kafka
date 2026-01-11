@@ -13,6 +13,12 @@ void validate_group_id(const std::string& group_id) {
     }
 }
 
+void validate_topic(const std::string& topic) {
+    if (topic.empty()) {
+        throw std::runtime_error("consumer group: topic must not be empty");
+    }
+}
+
 }  // namespace
 
 PartitionAssignment assign_partitions_round_robin(const std::vector<std::string>& members,
@@ -86,6 +92,38 @@ std::vector<std::string> ConsumerGroupRegistry::members(const std::string& group
     std::vector<std::string> result = group_it->second;
     std::sort(result.begin(), result.end());
     return result;
+}
+
+void CommittedOffsetStore::commit(const std::string& group_id, const std::string& topic,
+                                  const std::uint32_t partition, const std::uint64_t offset) {
+    validate_group_id(group_id);
+    validate_topic(topic);
+
+    std::lock_guard<std::mutex> lock(mu_);
+    offsets_[group_id][topic][partition] = offset;
+}
+
+std::uint64_t CommittedOffsetStore::committed_offset(const std::string& group_id,
+                                                     const std::string& topic,
+                                                     const std::uint32_t partition) const {
+    if (group_id.empty() || topic.empty()) {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(mu_);
+    const auto group_it = offsets_.find(group_id);
+    if (group_it == offsets_.end()) {
+        return 0;
+    }
+    const auto topic_it = group_it->second.find(topic);
+    if (topic_it == group_it->second.end()) {
+        return 0;
+    }
+    const auto partition_it = topic_it->second.find(partition);
+    if (partition_it == topic_it->second.end()) {
+        return 0;
+    }
+    return partition_it->second;
 }
 
 }  // namespace mini_kafka
