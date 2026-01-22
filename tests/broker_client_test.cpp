@@ -398,6 +398,103 @@ TEST(BrokerClientTest, FollowerRequiresLeaderEndpoint) {
     EXPECT_THROW(mini_kafka::Broker(std::move(bad_port)), std::runtime_error);
 }
 
+TEST(BrokerClientTest, JoinGroupAssignsPartitionsRoundRobin) {
+    TempDataDir tmp;
+    mini_kafka::Broker broker(tmp.path(), 0);
+    broker.add_topic(mini_kafka::make_topic_metadata("events", 4));
+
+    std::exception_ptr server_error;
+    std::thread server([&]() {
+        try {
+            broker.serve_n(3);
+        } catch (...) {
+            server_error = std::current_exception();
+        }
+    });
+
+    mini_kafka::join_group("127.0.0.1", broker.port(), "g", "alice", "events");
+    const mini_kafka::JoinGroupResponse bob =
+            mini_kafka::join_group("127.0.0.1", broker.port(), "g", "bob", "events");
+    const mini_kafka::JoinGroupResponse alice =
+            mini_kafka::join_group("127.0.0.1", broker.port(), "g", "alice", "events");
+
+    server.join();
+    if (server_error) {
+        std::rethrow_exception(server_error);
+    }
+
+    EXPECT_EQ(bob.member_id, "bob");
+    EXPECT_EQ(alice.member_id, "alice");
+    EXPECT_EQ(bob.partitions, (std::vector<std::uint32_t>{1, 3}));
+    EXPECT_EQ(alice.partitions, (std::vector<std::uint32_t>{0, 2}));
+}
+
+TEST(BrokerClientTest, GroupConsumeUsesCommittedOffset) {
+    TempDataDir tmp;
+    mini_kafka::Broker broker(tmp.path(), 0);
+    broker.add_topic(mini_kafka::make_topic_metadata("events", 1));
+
+    std::exception_ptr server_error;
+    std::thread server([&]() {
+        try {
+            broker.serve_n(6);
+        } catch (...) {
+            server_error = std::current_exception();
+        }
+    });
+
+    mini_kafka::produce("127.0.0.1", broker.port(), "events", make_record("k0", "v0"));
+    mini_kafka::produce("127.0.0.1", broker.port(), "events", make_record("k1", "v1"));
+    mini_kafka::produce("127.0.0.1", broker.port(), "events", make_record("k2", "v2"));
+
+    const std::vector<mini_kafka::Record> all =
+            mini_kafka::group_consume("127.0.0.1", broker.port(), "g", "events", 0);
+    mini_kafka::commit_offset("127.0.0.1", broker.port(), "g", "events", 0, 2);
+    const std::vector<mini_kafka::Record> after_commit =
+            mini_kafka::group_consume("127.0.0.1", broker.port(), "g", "events", 0);
+
+    server.join();
+    if (server_error) {
+        std::rethrow_exception(server_error);
+    }
+
+    ASSERT_EQ(all.size(), 3u);
+    EXPECT_EQ(all[0], make_record("k0", "v0"));
+    EXPECT_EQ(all[2], make_record("k2", "v2"));
+
+    ASSERT_EQ(after_commit.size(), 1u);
+    EXPECT_EQ(after_commit[0], make_record("k2", "v2"));
+}
+
+TEST(BrokerClientTest, LeaveGroupOverTcp) {
+    TempDataDir tmp;
+    mini_kafka::Broker broker(tmp.path(), 0);
+    broker.add_topic(mini_kafka::make_topic_metadata("events", 2));
+
+    std::exception_ptr server_error;
+    std::thread server([&]() {
+        try {
+            broker.serve_n(4);
+        } catch (...) {
+            server_error = std::current_exception();
+        }
+    });
+
+    mini_kafka::join_group("127.0.0.1", broker.port(), "g", "alice", "events");
+    mini_kafka::join_group("127.0.0.1", broker.port(), "g", "bob", "events");
+    EXPECT_NO_THROW(mini_kafka::leave_group("127.0.0.1", broker.port(), "g", "alice"));
+
+    const mini_kafka::JoinGroupResponse bob_after =
+            mini_kafka::join_group("127.0.0.1", broker.port(), "g", "bob", "events");
+
+    server.join();
+    if (server_error) {
+        std::rethrow_exception(server_error);
+    }
+
+    EXPECT_EQ(bob_after.partitions, (std::vector<std::uint32_t>{0, 1}));
+}
+
 TEST(BrokerClientTest, FollowerOptionsRecordsUpstream) {
     TempDataDir tmp;
     mini_kafka::BrokerOptions opts;

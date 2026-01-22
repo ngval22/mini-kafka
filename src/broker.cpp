@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "mini_kafka/client.h"
+#include "mini_kafka/consumer_group.h"
 #include "mini_kafka/protocol.h"
 #include "socket_util.h"
 
@@ -36,6 +37,30 @@ void log_replica_fetch(const std::string& topic, std::uint32_t partition,
               << " from_offset=" << from_offset << " records=" << record_count << "\n";
 }
 
+void log_join_group(const std::string& group_id, const std::string& member_id,
+                    std::size_t partition_count) {
+    std::cerr << "[broker] join_group group=" << group_id << " member=" << member_id
+              << " partitions=" << partition_count << "\n";
+}
+
+void log_leave_group(const std::string& group_id, const std::string& member_id) {
+    std::cerr << "[broker] leave_group group=" << group_id << " member=" << member_id << "\n";
+}
+
+void log_offset_commit(const std::string& group_id, const std::string& topic,
+                       std::uint32_t partition, std::uint64_t offset) {
+    std::cerr << "[broker] offset_commit group=" << group_id << " topic=" << topic
+              << " partition=" << partition << " offset=" << offset << "\n";
+}
+
+void log_group_consume(const std::string& group_id, const std::string& topic,
+                       std::uint32_t partition, std::uint64_t from_offset,
+                       std::size_t record_count) {
+    std::cerr << "[broker] group_consume group=" << group_id << " topic=" << topic
+              << " partition=" << partition << " from_offset=" << from_offset
+              << " records=" << record_count << "\n";
+}
+
 void log_error(const char* message) {
     std::cerr << "[broker] error: " << message << "\n";
 }
@@ -46,7 +71,16 @@ void log_metrics_summary(const BrokerMetricsSnapshot& metrics) {
               << "\n";
 }
 
-std::vector<uint8_t> handle_request(PartitionLogStore& store, BrokerMetrics& metrics,
+const TopicMetadata& topic_metadata_for(PartitionLogStore& store, const std::string& topic) {
+    const TopicMetadata* meta = store.topics().find(topic);
+    if (meta == nullptr) {
+        throw std::runtime_error("broker: unknown topic: " + topic);
+    }
+    return *meta;
+}
+
+std::vector<uint8_t> handle_request(PartitionLogStore& store, ConsumerGroupRegistry& groups,
+                                    CommittedOffsetStore& offsets, BrokerMetrics& metrics,
                                     BrokerRole role, const std::vector<uint8_t>& request) {
     if (request.empty()) {
         throw std::runtime_error("broker: empty request");
@@ -79,6 +113,41 @@ std::vector<uint8_t> handle_request(PartitionLogStore& store, BrokerMetrics& met
         const std::vector<Record> records =
                 store.read_from(fetch.topic, fetch.partition, fetch.from_offset);
         log_replica_fetch(fetch.topic, fetch.partition, fetch.from_offset, records.size());
+        return encode_consume_response(records);
+    }
+    if (request_type == static_cast<uint8_t>(RequestType::JoinGroup)) {
+        const JoinGroupRequest join = decode_join_group_request(request);
+        const std::string member_id = groups.join(join.group_id, join.member_id);
+        const TopicMetadata& topic = topic_metadata_for(store, join.topic);
+        const PartitionAssignment assignment = assign_partitions_round_robin(
+                groups.members(join.group_id), topic.partition_count);
+        JoinGroupResponse response;
+        response.member_id = member_id;
+        response.partitions = assignment.at(member_id);
+        log_join_group(join.group_id, member_id, response.partitions.size());
+        return encode_join_group_response(response);
+    }
+    if (request_type == static_cast<uint8_t>(RequestType::LeaveGroup)) {
+        const LeaveGroupRequest leave = decode_leave_group_request(request);
+        groups.leave(leave.group_id, leave.member_id);
+        log_leave_group(leave.group_id, leave.member_id);
+        return encode_leave_group_ok_response();
+    }
+    if (request_type == static_cast<uint8_t>(RequestType::OffsetCommit)) {
+        const OffsetCommitRequest commit = decode_offset_commit_request(request);
+        offsets.commit(commit.group_id, commit.topic, commit.partition, commit.offset);
+        log_offset_commit(commit.group_id, commit.topic, commit.partition, commit.offset);
+        return encode_offset_commit_ok_response();
+    }
+    if (request_type == static_cast<uint8_t>(RequestType::GroupConsume)) {
+        const GroupConsumeRequest consume = decode_group_consume_request(request);
+        const std::uint64_t from_offset =
+                offsets.committed_offset(consume.group_id, consume.topic, consume.partition);
+        const std::vector<Record> records =
+                store.read_from(consume.topic, consume.partition, from_offset);
+        metrics.on_consume();
+        log_group_consume(consume.group_id, consume.topic, consume.partition, from_offset,
+                          records.size());
         return encode_consume_response(records);
     }
     throw std::runtime_error("broker: unknown request type");
@@ -252,7 +321,8 @@ void Broker::handle_client(int client_fd) {
     SocketHandle client(client_fd);
     try {
         const std::vector<uint8_t> request = read_frame(client.get());
-        const std::vector<uint8_t> response = handle_request(store_, metrics_, role_, request);
+        const std::vector<uint8_t> response =
+                handle_request(store_, groups_, offsets_, metrics_, role_, request);
         write_frame(client.get(), response);
     } catch (const std::exception& ex) {
         metrics_.on_error();

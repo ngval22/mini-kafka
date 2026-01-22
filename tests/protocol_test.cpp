@@ -58,3 +58,59 @@ TEST(ProtocolTest, ErrorResponseRoundTripsMessage) {
     const std::vector<uint8_t> payload = mini_kafka::encode_error_response(original);
     EXPECT_EQ(mini_kafka::decode_error_response(payload), original);
 }
+
+TEST(ProtocolTest, JoinGroupRequestRoundTrips) {
+    const mini_kafka::JoinGroupRequest original{"my-group", "alice", "events"};
+    const std::vector<uint8_t> payload = mini_kafka::encode_join_group_request(original);
+    const mini_kafka::JoinGroupRequest decoded = mini_kafka::decode_join_group_request(payload);
+    EXPECT_EQ(decoded.group_id, original.group_id);
+    EXPECT_EQ(decoded.member_id, original.member_id);
+    EXPECT_EQ(decoded.topic, original.topic);
+}
+
+TEST(ProtocolTest, JoinGroupResponseRoundTrips) {
+    const mini_kafka::JoinGroupResponse original{"alice", {0, 3}};
+    const std::vector<uint8_t> payload = mini_kafka::encode_join_group_response(original);
+    const mini_kafka::JoinGroupResponse decoded = mini_kafka::decode_join_group_response(payload);
+    EXPECT_EQ(decoded.member_id, original.member_id);
+    EXPECT_EQ(decoded.partitions, original.partitions);
+}
+
+TEST(ProtocolTest, LeaveGroupRequestRoundTrips) {
+    const mini_kafka::LeaveGroupRequest original{"my-group", "alice"};
+    const std::vector<uint8_t> payload = mini_kafka::encode_leave_group_request(original);
+    const mini_kafka::LeaveGroupRequest decoded = mini_kafka::decode_leave_group_request(payload);
+    EXPECT_EQ(decoded.group_id, original.group_id);
+    EXPECT_EQ(decoded.member_id, original.member_id);
+}
+
+TEST(ProtocolTest, LeaveGroupOkResponseIsEmptyBody) {
+    const std::vector<uint8_t> payload = mini_kafka::encode_leave_group_ok_response();
+    EXPECT_NO_THROW(mini_kafka::decode_leave_group_ok_response(payload));
+}
+
+TEST(ProtocolTest, OffsetCommitRequestRoundTrips) {
+    const mini_kafka::OffsetCommitRequest original{"g", "events", 2, 99};
+    const std::vector<uint8_t> payload = mini_kafka::encode_offset_commit_request(original);
+    const mini_kafka::OffsetCommitRequest decoded =
+            mini_kafka::decode_offset_commit_request(payload);
+    EXPECT_EQ(decoded.group_id, original.group_id);
+    EXPECT_EQ(decoded.topic, original.topic);
+    EXPECT_EQ(decoded.partition, original.partition);
+    EXPECT_EQ(decoded.offset, original.offset);
+}
+
+TEST(ProtocolTest, OffsetCommitOkResponseIsEmptyBody) {
+    const std::vector<uint8_t> payload = mini_kafka::encode_offset_commit_ok_response();
+    EXPECT_NO_THROW(mini_kafka::decode_offset_commit_ok_response(payload));
+}
+
+TEST(ProtocolTest, GroupConsumeRequestRoundTrips) {
+    const mini_kafka::GroupConsumeRequest original{"g", "events", 1};
+    const std::vector<uint8_t> payload = mini_kafka::encode_group_consume_request(original);
+    const mini_kafka::GroupConsumeRequest decoded =
+            mini_kafka::decode_group_consume_request(payload);
+    EXPECT_EQ(decoded.group_id, original.group_id);
+    EXPECT_EQ(decoded.topic, original.topic);
+    EXPECT_EQ(decoded.partition, original.partition);
+}

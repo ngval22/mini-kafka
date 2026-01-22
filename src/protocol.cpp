@@ -70,6 +70,42 @@ Record decode_single_record_payload(const std::vector<uint8_t>& payload, std::si
     return record;
 }
 
+void append_partitions(std::vector<uint8_t>& buf, const std::vector<std::uint32_t>& partitions) {
+    if (partitions.size() > std::numeric_limits<uint32_t>::max()) {
+        throw std::runtime_error("protocol: partition list too large");
+    }
+    append_u32_le(buf, static_cast<uint32_t>(partitions.size()));
+    for (const std::uint32_t partition : partitions) {
+        append_u32_le(buf, partition);
+    }
+}
+
+std::size_t decode_partitions_at(const std::vector<uint8_t>& payload, std::size_t offset,
+                                 std::vector<std::uint32_t>& partitions) {
+    const uint32_t count = read_u32_le(payload, offset);
+    offset += 4;
+    partitions.clear();
+    partitions.reserve(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        if (offset + 4 > payload.size()) {
+            throw std::runtime_error("protocol: truncated partition list");
+        }
+        partitions.push_back(read_u32_le(payload, offset));
+        offset += 4;
+    }
+    return offset;
+}
+
+void decode_empty_ok_response(const std::vector<uint8_t>& payload, ResponseType expected,
+                              const char* what) {
+    if (first_byte_or_throw(payload, what) != static_cast<uint8_t>(expected)) {
+        throw std::runtime_error(std::string("protocol: wrong response type for ") + what);
+    }
+    if (payload.size() != 1) {
+        throw std::runtime_error(std::string("protocol: ") + what + " should not include a body");
+    }
+}
+
 }  // namespace
 
 std::vector<uint8_t> encode_frame(const std::vector<uint8_t>& payload) {
@@ -156,6 +192,149 @@ ReplicaFetchRequest decode_replica_fetch_request(const std::vector<uint8_t>& pay
     if (offset + 8 != payload.size()) {
         throw std::runtime_error("protocol: replica fetch request has unexpected trailing data");
     }
+    return request;
+}
+
+std::vector<uint8_t> encode_join_group_request(const JoinGroupRequest& request) {
+    std::vector<uint8_t> payload;
+    payload.push_back(static_cast<uint8_t>(RequestType::JoinGroup));
+    append_string(payload, request.group_id);
+    append_string(payload, request.member_id);
+    append_string(payload, request.topic);
+    return payload;
+}
+
+JoinGroupRequest decode_join_group_request(const std::vector<uint8_t>& payload) {
+    if (first_byte_or_throw(payload, "join group request") !=
+        static_cast<uint8_t>(RequestType::JoinGroup)) {
+        throw std::runtime_error("protocol: wrong request type for join group");
+    }
+
+    JoinGroupRequest request;
+    std::size_t offset = decode_string_at(payload, 1, request.group_id);
+    offset = decode_string_at(payload, offset, request.member_id);
+    offset = decode_string_at(payload, offset, request.topic);
+    if (offset != payload.size()) {
+        throw std::runtime_error("protocol: join group request has unexpected trailing data");
+    }
+    return request;
+}
+
+std::vector<uint8_t> encode_join_group_response(const JoinGroupResponse& response) {
+    std::vector<uint8_t> payload;
+    payload.push_back(static_cast<uint8_t>(ResponseType::JoinGroupOk));
+    append_string(payload, response.member_id);
+    append_partitions(payload, response.partitions);
+    return payload;
+}
+
+JoinGroupResponse decode_join_group_response(const std::vector<uint8_t>& payload) {
+    if (first_byte_or_throw(payload, "join group response") !=
+        static_cast<uint8_t>(ResponseType::JoinGroupOk)) {
+        throw std::runtime_error("protocol: wrong response type for join group");
+    }
+
+    JoinGroupResponse response;
+    std::size_t offset = decode_string_at(payload, 1, response.member_id);
+    offset = decode_partitions_at(payload, offset, response.partitions);
+    if (offset != payload.size()) {
+        throw std::runtime_error("protocol: join group response has unexpected trailing data");
+    }
+    return response;
+}
+
+std::vector<uint8_t> encode_leave_group_request(const LeaveGroupRequest& request) {
+    std::vector<uint8_t> payload;
+    payload.push_back(static_cast<uint8_t>(RequestType::LeaveGroup));
+    append_string(payload, request.group_id);
+    append_string(payload, request.member_id);
+    return payload;
+}
+
+LeaveGroupRequest decode_leave_group_request(const std::vector<uint8_t>& payload) {
+    if (first_byte_or_throw(payload, "leave group request") !=
+        static_cast<uint8_t>(RequestType::LeaveGroup)) {
+        throw std::runtime_error("protocol: wrong request type for leave group");
+    }
+
+    LeaveGroupRequest request;
+    std::size_t offset = decode_string_at(payload, 1, request.group_id);
+    offset = decode_string_at(payload, offset, request.member_id);
+    if (offset != payload.size()) {
+        throw std::runtime_error("protocol: leave group request has unexpected trailing data");
+    }
+    return request;
+}
+
+std::vector<uint8_t> encode_leave_group_ok_response() {
+    return {static_cast<uint8_t>(ResponseType::LeaveGroupOk)};
+}
+
+void decode_leave_group_ok_response(const std::vector<uint8_t>& payload) {
+    decode_empty_ok_response(payload, ResponseType::LeaveGroupOk, "leave group");
+}
+
+std::vector<uint8_t> encode_offset_commit_request(const OffsetCommitRequest& request) {
+    std::vector<uint8_t> payload;
+    payload.push_back(static_cast<uint8_t>(RequestType::OffsetCommit));
+    append_string(payload, request.group_id);
+    append_string(payload, request.topic);
+    append_u32_le(payload, request.partition);
+    append_u64_le(payload, request.offset);
+    return payload;
+}
+
+OffsetCommitRequest decode_offset_commit_request(const std::vector<uint8_t>& payload) {
+    if (first_byte_or_throw(payload, "offset commit request") !=
+        static_cast<uint8_t>(RequestType::OffsetCommit)) {
+        throw std::runtime_error("protocol: wrong request type for offset commit");
+    }
+
+    OffsetCommitRequest request;
+    std::size_t offset = decode_string_at(payload, 1, request.group_id);
+    offset = decode_string_at(payload, offset, request.topic);
+    if (offset + 12 > payload.size()) {
+        throw std::runtime_error("protocol: offset commit request truncated");
+    }
+    request.partition = read_u32_le(payload, offset);
+    offset += 4;
+    request.offset = read_u64_le(payload, offset);
+    if (offset + 8 != payload.size()) {
+        throw std::runtime_error("protocol: offset commit request has unexpected trailing data");
+    }
+    return request;
+}
+
+std::vector<uint8_t> encode_offset_commit_ok_response() {
+    return {static_cast<uint8_t>(ResponseType::OffsetCommitOk)};
+}
+
+void decode_offset_commit_ok_response(const std::vector<uint8_t>& payload) {
+    decode_empty_ok_response(payload, ResponseType::OffsetCommitOk, "offset commit");
+}
+
+std::vector<uint8_t> encode_group_consume_request(const GroupConsumeRequest& request) {
+    std::vector<uint8_t> payload;
+    payload.push_back(static_cast<uint8_t>(RequestType::GroupConsume));
+    append_string(payload, request.group_id);
+    append_string(payload, request.topic);
+    append_u32_le(payload, request.partition);
+    return payload;
+}
+
+GroupConsumeRequest decode_group_consume_request(const std::vector<uint8_t>& payload) {
+    if (first_byte_or_throw(payload, "group consume request") !=
+        static_cast<uint8_t>(RequestType::GroupConsume)) {
+        throw std::runtime_error("protocol: wrong request type for group consume");
+    }
+
+    GroupConsumeRequest request;
+    std::size_t offset = decode_string_at(payload, 1, request.group_id);
+    offset = decode_string_at(payload, offset, request.topic);
+    if (offset + 4 != payload.size()) {
+        throw std::runtime_error("protocol: group consume request has unexpected trailing data");
+    }
+    request.partition = read_u32_le(payload, offset);
     return request;
 }
 

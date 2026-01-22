@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "mini_kafka/broker_metrics.h"
+#include "mini_kafka/consumer_group.h"
 #include "mini_kafka/partition_store.h"
 #include "mini_kafka/topic.h"
 
@@ -63,6 +64,8 @@ private:
     void sync_from_leader_if_follower();
 
     PartitionLogStore store_;
+    ConsumerGroupRegistry groups_;
+    CommittedOffsetStore offsets_;
     BrokerRole role_;
     std::string leader_host_;
     uint16_t leader_port_;
