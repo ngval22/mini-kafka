@@ -1,5 +1,4 @@
 #include "mini_kafka/flush_policy.h"
-#include "mini_kafka/log.h"
 #include "mini_kafka/segmented_log.h"
 
 #include <filesystem>
@@ -20,20 +19,20 @@ mini_kafka::Record make_record(const std::string& key, const std::string& value)
 
 }  // namespace
 
-TEST(FlushPolicyTest, LogStoresPolicy) {
-    const fs::path path =
+TEST(FlushPolicyTest, SegmentedLogStoresPolicy) {
+    const fs::path dir =
             fs::temp_directory_path() /
-            ("mini_kafka_flush_policy_" + std::to_string(reinterpret_cast<uintptr_t>(&path)) +
-             ".bin");
-    fs::remove(path);
+            ("mini_kafka_flush_policy_" + std::to_string(reinterpret_cast<uintptr_t>(&dir)));
+    fs::remove_all(dir);
 
-    mini_kafka::Log buffered(path.string(), mini_kafka::FlushPolicy::Buffered);
+    mini_kafka::SegmentedLog buffered(dir.string(), 1024, 4, mini_kafka::FlushPolicy::Buffered);
     EXPECT_EQ(buffered.flush_policy(), mini_kafka::FlushPolicy::Buffered);
 
-    mini_kafka::Log fsync(path.string(), mini_kafka::FlushPolicy::Fsync);
+    mini_kafka::SegmentedLog fsync(dir.string() + "_fsync", 1024, 4, mini_kafka::FlushPolicy::Fsync);
     EXPECT_EQ(fsync.flush_policy(), mini_kafka::FlushPolicy::Fsync);
 
-    fs::remove(path);
+    fs::remove_all(dir);
+    fs::remove_all(dir.string() + "_fsync");
 }
 
 TEST(FlushPolicyTest, SegmentedLogFsyncAppendSucceeds) {
