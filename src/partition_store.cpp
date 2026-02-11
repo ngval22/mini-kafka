@@ -92,12 +92,24 @@ std::vector<Record> PartitionLogStore::read_all(const std::string& topic,
 std::vector<Record> PartitionLogStore::read_from(const std::string& topic,
                                                  const std::uint32_t partition,
                                                  const std::uint64_t from_offset) {
-    std::vector<Record> records = read_all(topic, partition);
-    if (from_offset >= records.size()) {
-        return {};
-    }
-    return std::vector<Record>(records.begin() + static_cast<std::ptrdiff_t>(from_offset),
-                               records.end());
+    const TopicMetadata& meta = metadata_for(topic);
+    validate_partition(meta, partition);
+
+    const std::string dir = partition_dir(topic, partition);
+    PartitionEntry& entry = entry_for(dir);
+    std::lock_guard<std::mutex> partition_lock(entry.mu);
+    return open_log(entry, dir).read_from(from_offset);
+}
+
+std::uint64_t PartitionLogStore::record_count(const std::string& topic,
+                                              const std::uint32_t partition) {
+    const TopicMetadata& meta = metadata_for(topic);
+    validate_partition(meta, partition);
+
+    const std::string dir = partition_dir(topic, partition);
+    PartitionEntry& entry = entry_for(dir);
+    std::lock_guard<std::mutex> partition_lock(entry.mu);
+    return open_log(entry, dir).record_count();
 }
 
 }  // namespace mini_kafka

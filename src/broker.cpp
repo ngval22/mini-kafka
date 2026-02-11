@@ -228,8 +228,8 @@ void Broker::sync_from_leader() {
 
     for (const TopicMetadata& topic : store_.topics().topics()) {
         for (std::uint32_t partition = 0; partition < topic.partition_count; ++partition) {
-            const std::uint64_t from_offset = static_cast<std::uint64_t>(
-                    store_.read_all(topic.name, partition).size());
+            const std::uint64_t from_offset =
+                    store_.record_count(topic.name, partition);
             const std::vector<Record> records = replica_fetch(
                     leader_host_, leader_port_, topic.name, partition, from_offset);
             for (const Record& record : records) {

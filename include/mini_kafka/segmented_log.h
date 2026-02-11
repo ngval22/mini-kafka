@@ -29,6 +29,10 @@ public:
 
     void append(const Record& record);
     std::vector<Record> read_all() const;
+    std::vector<Record> read_from(std::uint64_t from_offset) const;
+
+    // Logical record count (next append offset).
+    std::uint64_t record_count() const;
 
     const std::string& dir_path() const;
     std::size_t max_segment_bytes() const;

@@ -175,6 +175,52 @@ TEST(SegmentedLogTest, RebuildsIndexAfterTailTruncation) {
     EXPECT_EQ(log.read_all().size(), 4u);
 }
 
+TEST(SegmentedLogTest, ReadFromSkipsEarlierOffsets) {
+    TempLogDir tmp;
+    mini_kafka::SegmentedLog log(tmp.path(), 1024, 4);
+
+    log.append(make_record("k0", "v0"));
+    log.append(make_record("k1", "v1"));
+    log.append(make_record("k2", "v2"));
+
+    const std::vector<mini_kafka::Record> all = {
+            make_record("k0", "v0"),
+            make_record("k1", "v1"),
+            make_record("k2", "v2"),
+    };
+    const std::vector<mini_kafka::Record> from_one = {
+            make_record("k1", "v1"),
+            make_record("k2", "v2"),
+    };
+    EXPECT_EQ(log.record_count(), 3u);
+    EXPECT_EQ(log.read_from(0), all);
+    EXPECT_EQ(log.read_from(1), from_one);
+    EXPECT_TRUE(log.read_from(3).empty());
+}
+
+TEST(SegmentedLogTest, ReadFromUsesIndexAcrossSegments) {
+    TempLogDir tmp;
+    constexpr std::size_t kMaxSegmentBytes = 64;
+    constexpr std::uint32_t kIndexInterval = 2;
+
+    {
+        mini_kafka::SegmentedLog log(tmp.path(), kMaxSegmentBytes, kIndexInterval);
+        log.append(make_record("a", "1"));
+        log.append(make_record("b", "2"));
+        log.append(make_record("c", "3"));
+        log.append(make_record("d", "4"));
+        log.append(make_record("e", "5"));
+        ASSERT_GE(log.segment_file_count(), 2u);
+    }
+
+    mini_kafka::SegmentedLog log(tmp.path(), kMaxSegmentBytes, kIndexInterval);
+    ASSERT_EQ(log.record_count(), 5u);
+    const std::vector<mini_kafka::Record> tail = log.read_from(3);
+    ASSERT_EQ(tail.size(), 2u);
+    EXPECT_EQ(tail[0], make_record("d", "4"));
+    EXPECT_EQ(tail[1], make_record("e", "5"));
+}
+
 TEST(SegmentedLogTest, CleanRestartSafeReadsAcrossSegments) {
     TempLogDir tmp;
     constexpr std::size_t kMaxSegmentBytes = 64;

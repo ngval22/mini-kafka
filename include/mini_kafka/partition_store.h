@@ -27,6 +27,7 @@ public:
     std::vector<Record> read_all(const std::string& topic, std::uint32_t partition);
     std::vector<Record> read_from(const std::string& topic, std::uint32_t partition,
                                   std::uint64_t from_offset);
+    std::uint64_t record_count(const std::string& topic, std::uint32_t partition);
 
     std::string partition_dir(const std::string& topic, std::uint32_t partition) const;
 

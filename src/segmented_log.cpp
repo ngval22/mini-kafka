@@ -297,13 +297,53 @@ void SegmentedLog::append(const Record& record) {
     ++next_offset_;
 }
 
-std::vector<Record> SegmentedLog::read_all() const {
+std::uint64_t SegmentedLog::record_count() const {
+    return next_offset_;
+}
+
+std::vector<Record> SegmentedLog::read_from(const std::uint64_t from_offset) const {
+    if (from_offset >= next_offset_) {
+        return {};
+    }
+
     std::vector<Record> records;
+    records.reserve(static_cast<std::size_t>(next_offset_ - from_offset));
+
+    std::uint64_t current_offset = 0;
+    std::uint64_t start_segment_base = 0;
+    std::uint64_t start_byte_position = 0;
+    if (const std::optional<IndexEntry> entry = index_.lookup(from_offset)) {
+        current_offset = entry->offset;
+        start_segment_base = entry->segment_base_offset;
+        start_byte_position = entry->byte_position;
+    }
+
     for (const std::uint64_t base : list_segment_base_offsets()) {
-        const std::vector<Record> segment_records = read_segment_file(segment_path(base));
-        records.insert(records.end(), segment_records.begin(), segment_records.end());
+        if (base < start_segment_base) {
+            continue;
+        }
+
+        std::ifstream in(segment_path(base), std::ios::in | std::ios::binary);
+        if (!in) {
+            throw std::runtime_error("segmented_log: failed to open segment for read: " +
+                                     segment_path(base));
+        }
+        if (base == start_segment_base) {
+            in.seekg(static_cast<std::streamoff>(start_byte_position), std::ios::beg);
+        }
+
+        while (const std::optional<Record> record = read_record(in)) {
+            if (current_offset >= from_offset) {
+                records.push_back(*record);
+            }
+            ++current_offset;
+        }
     }
     return records;
+}
+
+std::vector<Record> SegmentedLog::read_all() const {
+    return read_from(0);
 }
 
 }  // namespace mini_kafka
