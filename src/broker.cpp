@@ -286,20 +286,6 @@ void Broker::enqueue_client(int client_fd) {
     queue_cv_.notify_one();
 }
 
-void Broker::on_client_handled() {
-    if (!track_job_completion_) {
-        return;
-    }
-    std::lock_guard<std::mutex> lock(completion_mutex_);
-    if (jobs_remaining_ == 0) {
-        return;
-    }
-    --jobs_remaining_;
-    if (jobs_remaining_ == 0) {
-        completion_cv_.notify_one();
-    }
-}
-
 void Broker::worker_loop() {
     while (true) {
         int client_fd = -1;
@@ -313,7 +299,6 @@ void Broker::worker_loop() {
             client_queue_.pop();
         }
         handle_client(client_fd);
-        on_client_handled();
     }
 }
 
@@ -340,26 +325,11 @@ void Broker::serve_forever() {
     }
 }
 
-void Broker::serve_n(std::size_t max_connections) {
+void Broker::serve_n(const std::size_t max_connections) {
     sync_from_leader_if_follower();
-    {
-        std::lock_guard<std::mutex> lock(completion_mutex_);
-        track_job_completion_ = true;
-        jobs_remaining_ = max_connections;
-    }
-    start_workers();
-
     for (std::size_t i = 0; i < max_connections; ++i) {
-        const int client_fd = accept_client(listen_fd_);
-        enqueue_client(client_fd);
+        handle_client(accept_client(listen_fd_));
     }
-
-    {
-        std::unique_lock<std::mutex> lock(completion_mutex_);
-        completion_cv_.wait(lock, [&] { return jobs_remaining_ == 0; });
-        track_job_completion_ = false;
-    }
-    stop_workers();
 }
 
 }  // namespace mini_kafka

@@ -60,7 +60,6 @@ private:
     void start_workers();
     void stop_workers();
     void enqueue_client(int client_fd);
-    void on_client_handled();
     void sync_from_leader_if_follower();
 
     PartitionLogStore store_;
@@ -79,11 +78,6 @@ private:
     std::condition_variable queue_cv_;
     bool workers_running_ = false;
     bool stopping_ = false;
-
-    std::mutex completion_mutex_;
-    std::condition_variable completion_cv_;
-    bool track_job_completion_ = false;
-    std::size_t jobs_remaining_ = 0;
 };
 
 }  // namespace mini_kafka
