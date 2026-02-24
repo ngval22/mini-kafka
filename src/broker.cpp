@@ -298,7 +298,12 @@ void Broker::worker_loop() {
             client_fd = client_queue_.front();
             client_queue_.pop();
         }
-        handle_client(client_fd);
+        try {
+            handle_client(client_fd);
+        } catch (const std::exception& ex) {
+            metrics_.on_error();
+            log_error(ex.what());
+        }
     }
 }
 
@@ -312,7 +317,11 @@ void Broker::handle_client(int client_fd) {
     } catch (const std::exception& ex) {
         metrics_.on_error();
         log_error(ex.what());
-        write_frame(client.get(), encode_error_response(ex.what()));
+        try {
+            write_frame(client.get(), encode_error_response(ex.what()));
+        } catch (const std::exception& write_ex) {
+            log_error(write_ex.what());
+        }
     }
 }
 
