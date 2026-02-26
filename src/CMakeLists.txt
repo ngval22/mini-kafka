@@ -47,6 +47,13 @@ target_link_libraries(mini_kafka_consume PRIVATE
     mini_kafka
 )
 
+add_executable(mini_kafka_group
+    group_main.cpp
+)
+target_link_libraries(mini_kafka_group PRIVATE
+    mini_kafka
+)
+
 add_executable(mini_kafka_log_dump
     log_dump_main.cpp
 )
