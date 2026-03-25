@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "mini_kafka/broker_metrics.h"
+#include "mini_kafka/flush_policy.h"
 #include "mini_kafka/consumer_group.h"
 #include "mini_kafka/partition_store.h"
 #include "mini_kafka/topic.h"
@@ -28,6 +29,7 @@ struct BrokerOptions {
     std::string leader_host;
     uint16_t leader_port = 0;
     bool promoted = false;
+    FlushPolicy flush_policy = FlushPolicy::Flush;
 };
 
 class Broker {

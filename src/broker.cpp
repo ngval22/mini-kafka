@@ -158,8 +158,24 @@ std::vector<uint8_t> handle_request(PartitionLogStore& store, ConsumerGroupRegis
 Broker::Broker(std::string data_dir, uint16_t port)
         : Broker(BrokerOptions{std::move(data_dir), port, BrokerRole::Leader, std::string(), 0}) {}
 
+namespace {
+
+const char* flush_policy_name(const FlushPolicy policy) {
+    switch (policy) {
+        case FlushPolicy::Buffered:
+            return "buffered";
+        case FlushPolicy::Flush:
+            return "flush";
+        case FlushPolicy::Fsync:
+            return "fsync";
+    }
+    return "unknown";
+}
+
+}  // namespace
+
 Broker::Broker(BrokerOptions options)
-        : store_(std::move(options.data_dir)),
+        : store_(std::move(options.data_dir), options.flush_policy),
           role_(options.role),
           leader_host_(std::move(options.leader_host)),
           leader_port_(options.leader_port),
@@ -178,6 +194,7 @@ Broker::Broker(BrokerOptions options)
     add_topic(make_topic_metadata("default", 1));
     listen_fd_ = create_listen_socket(options.port, &port_);
 
+    std::cerr << "[broker] flush=" << flush_policy_name(options.flush_policy) << "\n";
     if (role_ == BrokerRole::Leader && options.promoted) {
         std::cerr << "[broker] role=leader (manually promoted)\n";
     } else if (role_ == BrokerRole::Leader) {

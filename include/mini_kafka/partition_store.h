@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "mini_kafka/flush_policy.h"
 #include "mini_kafka/record.h"
 #include "mini_kafka/segmented_log.h"
 #include "mini_kafka/topic.h"
@@ -17,7 +18,8 @@ namespace mini_kafka {
 //   {base_dir}/{topic}-p{partition}/
 class PartitionLogStore {
 public:
-    explicit PartitionLogStore(std::string base_dir);
+    explicit PartitionLogStore(std::string base_dir,
+                               FlushPolicy flush_policy = FlushPolicy::Flush);
 
     void add_topic(TopicMetadata topic);
     const TopicRegistry& topics() const;
@@ -43,6 +45,7 @@ private:
     SegmentedLog& open_log(PartitionEntry& entry, const std::string& dir);
 
     std::string base_dir_;
+    FlushPolicy flush_policy_;
     TopicRegistry topics_;
     std::mutex partitions_map_mutex_;
     std::unordered_map<std::string, PartitionEntry> partitions_;

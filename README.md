@@ -138,7 +138,13 @@ after a clean restart, you can read back every complete record that was on disk,
 | `Flush` | `ostream::flush` to the OS | broker default; good for demos |
 | `Fsync` | flush + `fsync` the segment file | strongest single-node durability; slower |
 
-The broker opens partition logs with the default (`Flush`). There is no CLI flag to change it yet. Tests and library callers can pass `FlushPolicy::Fsync` to `SegmentedLog` directly.
+The broker opens partition logs with `Flush` by default. Override at startup:
+
+```bash
+./build/src/mini_kafka_broker /tmp/mini_kafka_data 9092 --flush fsync events 4
+```
+
+Stderr logs `flush=buffered`, `flush=flush`, or `flush=fsync`. Tests and library callers can also pass `FlushPolicy` to `SegmentedLog` directly.
 
 `Flush` pushes bytes out of the C++ stream but does not force the kernel to write them to disk. Only `Fsync` helps survive a power loss or kernel panic. Even with `Fsync`, a crash can still lose the last append if it never finished writing.
 

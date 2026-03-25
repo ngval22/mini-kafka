@@ -8,7 +8,8 @@ namespace mini_kafka {
 
 namespace fs = std::filesystem;
 
-PartitionLogStore::PartitionLogStore(std::string base_dir) : base_dir_(std::move(base_dir)) {
+PartitionLogStore::PartitionLogStore(std::string base_dir, const FlushPolicy flush_policy)
+        : base_dir_(std::move(base_dir)), flush_policy_(flush_policy) {
     if (base_dir_.empty()) {
         throw std::runtime_error("partition_store: base_dir must not be empty");
     }
@@ -56,7 +57,7 @@ PartitionLogStore::PartitionEntry& PartitionLogStore::entry_for(const std::strin
 
 SegmentedLog& PartitionLogStore::open_log(PartitionEntry& entry, const std::string& dir) {
     if (entry.log == nullptr) {
-        entry.log = std::make_unique<SegmentedLog>(dir);
+        entry.log = std::make_unique<SegmentedLog>(dir, 1024 * 1024, 4, flush_policy_);
     }
     return *entry.log;
 }

@@ -1,4 +1,5 @@
 #include "mini_kafka/broker.h"
+#include "mini_kafka/flush_policy.h"
 #include "mini_kafka/topic.h"
 
 #include <cstdint>
@@ -24,8 +25,23 @@ std::uint32_t parse_partition_count(const char* text) {
     return static_cast<std::uint32_t>(value);
 }
 
+mini_kafka::FlushPolicy parse_flush_policy(const char* text) {
+    const std::string value = text;
+    if (value == "buffered") {
+        return mini_kafka::FlushPolicy::Buffered;
+    }
+    if (value == "flush") {
+        return mini_kafka::FlushPolicy::Flush;
+    }
+    if (value == "fsync") {
+        return mini_kafka::FlushPolicy::Fsync;
+    }
+    throw std::runtime_error("flush policy must be buffered, flush, or fsync");
+}
+
 void print_usage() {
     std::cerr << "usage: mini_kafka_broker <data_dir> <port> "
+                 "[--flush buffered|flush|fsync] "
                  "[--follower <leader_host> <leader_port> | --promote] [<topic> <partitions>]\n";
 }
 
@@ -43,21 +59,35 @@ int main(int argc, char** argv) {
         options.port = parse_port(argv[2]);
 
         int topic_index = 3;
-        if (argc > 3) {
-            const std::string flag = argv[3];
+        for (int i = 3; i < argc;) {
+            const std::string flag = argv[i];
+            if (flag == "--flush") {
+                if (i + 2 > argc) {
+                    print_usage();
+                    return 1;
+                }
+                options.flush_policy = parse_flush_policy(argv[i + 1]);
+                i += 2;
+                continue;
+            }
             if (flag == "--follower") {
-                if (argc != 6 && argc != 8) {
+                if (i + 3 > argc) {
                     print_usage();
                     return 1;
                 }
                 options.role = mini_kafka::BrokerRole::Follower;
-                options.leader_host = argv[4];
-                options.leader_port = parse_port(argv[5]);
-                topic_index = 6;
-            } else if (flag == "--promote") {
-                options.promoted = true;
-                topic_index = 4;
+                options.leader_host = argv[i + 1];
+                options.leader_port = parse_port(argv[i + 2]);
+                i += 3;
+                continue;
             }
+            if (flag == "--promote") {
+                options.promoted = true;
+                i += 1;
+                continue;
+            }
+            topic_index = i;
+            break;
         }
 
         const bool has_topic = (argc == topic_index + 2);
