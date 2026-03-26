@@ -121,6 +121,8 @@ int connect_to_server(const std::string& host, uint16_t port) {
         throw std::runtime_error(std::string("getaddrinfo: ") + gai_strerror(rc));
     }
 
+    const std::string endpoint = host + ":" + service;
+    int saved_errno = 0;
     addrinfo* current = result;
     while (current != nullptr) {
         int fd = ::socket(current->ai_family, current->ai_socktype, current->ai_protocol);
@@ -129,13 +131,22 @@ int connect_to_server(const std::string& host, uint16_t port) {
                 ::freeaddrinfo(result);
                 return fd;
             }
+            saved_errno = errno;
             ::close(fd);
         }
         current = current->ai_next;
     }
 
     ::freeaddrinfo(result);
-    throw socket_error("connect");
+    if (saved_errno == ECONNREFUSED) {
+        throw std::runtime_error("connect to " + endpoint +
+                                 " failed: connection refused (is mini_kafka_broker running?)");
+    }
+    if (saved_errno != 0) {
+        throw std::runtime_error("connect to " + endpoint + " failed: " +
+                                 std::strerror(saved_errno));
+    }
+    throw std::runtime_error("connect to " + endpoint + " failed: no address succeeded");
 }
 
 void write_all(int fd, const uint8_t* data, std::size_t size) {
