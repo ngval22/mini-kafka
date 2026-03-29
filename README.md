@@ -1,6 +1,6 @@
 # Mini Kafka
 
-A learning-first, non-production Kafka-inspired broker in C++.
+A  non-production Kafka-inspired (or should I say Kafkaesque) messaging system in C++.
 
 ## Requirements
 
