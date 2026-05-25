@@ -107,7 +107,7 @@ There is no automatic failover. To treat a follower as the new leader after you 
 
 Stderr logs `role=leader (manually promoted)`. New produces go to this broker; it no longer syncs from the old leader.
 
-### Failure semantics (learning notes)
+### Failure semantics
 
 | Situation | What happens |
 |-----------|----------------|
